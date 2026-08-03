@@ -1044,11 +1044,34 @@ async function saveM3u($course) {
 
 async function prepareDownloading($course, subtitle) {
 	ui.prepareDownloading($course);
-	// ui.showProgress($course, true);
 
 	const courseId = $course.attr("course-id");
 	const courseName = $course.find(".coursename").text();
 	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
+
+	// Ensure the course item is IMMEDIATELY added to the Downloads tab DOM so searching another course will not lose it!
+	const $downloads = $(".ui.downloads.section .ui.courses.items");
+	let $downloadItem = $downloads.find(`[course-id="${courseId}"]`);
+
+	if (!$downloadItem.length) {
+		const courseObj = {
+			id: courseId,
+			url: $course.attr("course-url"),
+			name: courseName,
+			title: courseName,
+			image: $course.find(".image img").attr("src"),
+			completed: false,
+			encryptedVideos: Number($course.find('input[name="encryptedvideos"]').val() || 0),
+			selectedSubtitle: subtitle || "",
+			pathDownloaded: $course.find('input[name="path-downloaded"]').val() || "",
+			individualProgress: 0,
+			combinedProgress: 0,
+			progressStatus: translate("Preparing download..."),
+		};
+		$downloadItem = createCourseElement(courseObj, true);
+		$downloads.prepend($downloadItem);
+	}
+	ui.prepareDownloading($downloadItem);
 
 	const skipSubtitles = Boolean(Settings.download.skipSubtitles);
 	const defaultSubtitle = skipSubtitles ? null : (subtitle ?? Settings.download.defaultSubtitle);
@@ -1060,18 +1083,20 @@ async function prepareDownloading($course, subtitle) {
 		courseData = await fetchCourseContent(courseId, courseName, courseUrl);
 		if (!courseData) {
 			ui.showProgress($course, false);
+			ui.showProgress($downloadItem, false);
 			return;
 		}
 
 		if (courseData.encryptedVideos > 0 && !Settings.download.continueDonwloadingEncrypted) {
 			resetCourse($course, $course.find(".course-encrypted"));
+			resetCourse($downloadItem, $downloadItem.find(".course-encrypted"));
 			return;
 		}
 
 		try {
 			console.log("Downloading", courseData);
 			askForSubtitle(courseData.availableSubs, courseData.totalLectures, defaultSubtitle, (subtitle) => {
-				startDownload($course, courseData, subtitle);
+				startDownload($downloadItem, courseData, subtitle);
 			});
 		} catch (error) {
 			throw utils.newError("EASK_FOR_SUBTITLE", error.message);
@@ -1081,7 +1106,9 @@ async function prepareDownloading($course, subtitle) {
 		handleApiError(error, errorName, null, false);
 		ui.busyOff();
 		$course.find(".prepare-downloading").hide();
+		$downloadItem.find(".prepare-downloading").hide();
 		resetCourse($course, $course.find(".download-error"), Settings.download.autoRetry, courseData, subtitle);
+		resetCourse($downloadItem, $downloadItem.find(".download-error"), Settings.download.autoRetry, courseData, subtitle);
 	}
 }
 
