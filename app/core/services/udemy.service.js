@@ -42,23 +42,27 @@ class UdemyService {
 	async _prepareStreamSource(courseId, el) {
 		try {
 			if (el._class === "lecture") {
-				const assetType = el.asset?.asset_type.toLowerCase();
+				const assetType = el.asset?.asset_type ? el.asset.asset_type.toLowerCase() : "";
 				if (assetType === "video" || assetType === "videomashup") {
 					const asset = el.asset;
-					const stream_urls = asset.stream_urls?.Video || asset.media_sources;
-					const isEncrypted = Boolean(asset.media_license_token);
+					const stream_urls = asset?.stream_urls?.Video || asset?.media_sources;
+					const isEncrypted = Boolean(asset?.media_license_token);
 					if (stream_urls) {
 						// console.log(`Preparing streams for asset id: ${asset.id}`);
-						const streams = await this._convertToStreams(stream_urls, isEncrypted, asset.title);
+						const streams = await this._convertToStreams(stream_urls, isEncrypted, asset?.title || "");
 
-						delete el.asset.stream_urls;
-						delete el.asset.media_sources;
-						el.asset.streams = streams;
+						if (el.asset) {
+							delete el.asset.stream_urls;
+							delete el.asset.media_sources;
+							el.asset.streams = streams;
+						}
 					}
 				} else if (assetType === "presentation") {
 					const lecture = await this.fetchLecture(courseId, el.id, true, true);
-					el.asset = lecture.asset;
-					el.supplementary_assets = lecture.supplementary_assets;
+					if (lecture) {
+						el.asset = lecture.asset;
+						el.supplementary_assets = lecture.supplementary_assets;
+					}
 				}
 			}
 		} catch (error) {

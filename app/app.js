@@ -685,25 +685,30 @@ async function fetchCourseContent(courseId, courseName, courseUrl) {
 				courseData.totalLectures++;
 			} else {
 				const lecture = { type, name: item.title, src: "", quality: Settings.download.videoQuality, isEncrypted: false };
-				const { asset, supplementary_assets } = item;
-				const assetType = asset.asset_type.toLowerCase();
+				const { asset, supplementary_assets = [] } = item;
+				const assetType = asset?.asset_type ? asset.asset_type.toLowerCase() : "";
 
-				if (assetType == "article") {
+				if (!asset || !assetType) {
+					lecture.type = "url";
+					lecture.quality = "NotFound";
+					lecture.src = `<script type="text/javascript">window.location = "${courseUrl}/${item._class}/${item.id}";</script>`;
+					appendLog("Asset missing", `Course: ${courseId}|${courseName}`, `Lecture: ${item.id}|${item.title}`);
+				} else if (assetType == "article") {
 					lecture.type = "article";
 					lecture.quality = asset.asset_type;
-					lecture.src = asset.data?.body ?? asset.body;
+					lecture.src = asset.data?.body ?? asset.body ?? "";
 				} else if (assetType == "file" || assetType == "e-book") {
 					lecture.type = "file";
 					lecture.quality = asset.asset_type;
-					lecture.src = asset.download_urls[asset.asset_type][0].file;
+					lecture.src = asset.download_urls?.[asset.asset_type]?.[0]?.file || "";
 				} else if (assetType == "presentation") {
 					lecture.type = "file";
 					lecture.quality = asset.asset_type;
-					lecture.src = asset.url_set[asset.asset_type][0].file;
+					lecture.src = asset.url_set?.[asset.asset_type]?.[0]?.file || "";
 				} else if (assetType.startsWith("video")) {
 					const streams = asset.streams;
 
-					if (!streams.minQuality) {
+					if (!streams || !streams.minQuality) {
 						//WARN: File not uploaded
 						lecture.type = "url";
 						lecture.quality = "NotFound";
@@ -733,8 +738,8 @@ async function fetchCourseContent(courseId, courseName, courseUrl) {
 							}
 						}
 
-						lecture.src = streams.sources[lecture.quality].url;
-						lecture.type = streams.sources[lecture.quality].type;
+						lecture.src = streams.sources[lecture.quality]?.url || "";
+						lecture.type = streams.sources[lecture.quality]?.type || "video/mp4";
 						if (streams.isEncrypted) {
 							lecture.isEncrypted = true;
 							courseData.encryptedVideos++;
@@ -744,7 +749,7 @@ async function fetchCourseContent(courseId, courseName, courseUrl) {
 					appendLog("Unknown Asset Type ", `type: ${assetType}`, `Course: ${courseId}|${courseName}`);
 				}
 
-				if (!Settings.download.skipSubtitles && asset.captions.length > 0) {
+				if (!Settings.download.skipSubtitles && asset?.captions && asset.captions.length > 0) {
 					lecture.subtitles = {};
 
 					asset.captions.forEach((caption) => {
@@ -756,12 +761,12 @@ async function fetchCourseContent(courseId, courseName, courseUrl) {
 					});
 				}
 
-				if (downloadAttachments && supplementary_assets.length > 0) {
+				if (downloadAttachments && supplementary_assets && supplementary_assets.length > 0) {
 					const attachments = (lecture.attachments = []);
 
 					supplementary_assets.forEach((attachment) => {
 						const type = attachment.download_urls ? "file" : "url";
-						const src = attachment.download_urls
+						const src = attachment.download_urls && attachment.download_urls[attachment.asset_type]
 							? attachment.download_urls[attachment.asset_type][0].file
 							: `<script type="text/javascript">window.location = "${attachment.external_url}";</script>`;
 
