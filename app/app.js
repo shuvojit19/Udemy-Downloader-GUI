@@ -544,18 +544,15 @@ function sortDownloads() {
 			const $item = $(el);
 			const isCompleted = $item.attr("course-completed") === "true" || $item.find(".download-success").is(":visible");
 			const isError = $item.find(".download-error").is(":visible") || $item.find(".course-encrypted").is(":visible");
-			const isPaused = $item.data("isPaused") === true ||
-				(($item.find(".pause.button").hasClass("disabled") || $item.find(".pause.button").is(":hidden")) &&
-				($item.find(".resume.button").is(":visible") && !$item.find(".resume.button").hasClass("disabled")) &&
-				!isCompleted && !isError);
-			const isDownloading = ($item.data("isDownloading") === true || $item.data("isPreparing") === true || $item.data("isQueued") === true) && !isPaused && !isCompleted && !isError;
+			const isUserPaused = $item.data("isPaused") === true;
+			const isDownloadingOrQueued = ($item.data("isDownloading") === true || $item.data("isPreparing") === true || $item.data("isQueued") === true) && !isUserPaused && !isCompleted && !isError;
 
 			// Priority 1: Active ongoing downloads & queued (TOP)
-			if (isDownloading) {
+			if (isDownloadingOrQueued) {
 				return 1;
 			}
-			// Priority 2: Paused downloads (SECOND)
-			if (isPaused) {
+			// Priority 2: User paused downloads (SECOND)
+			if (isUserPaused) {
 				return 2;
 			}
 			// Priority 3: Download errors (THIRD)
@@ -589,34 +586,43 @@ function processDownloadQueue() {
 	const $downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item");
 
 	let activeCount = 0;
-	const queuedItems = [];
+	const pendingItems = [];
 
 	$downloads.each((_index, element) => {
 		const $item = $(element);
-		const isCompleted = $item.attr("course-completed") === "true";
-		const isError = $item.find(".download-error").is(":visible");
-		const isEncryptedError = $item.find(".course-encrypted").is(":visible");
-		const isPaused = $item.find(".pause.button").hasClass("disabled") && $item.find(".resume.button").is(":visible") && !$item.find(".resume.button").hasClass("disabled");
-		const isDownloading = $item.data("isDownloading") === true || ($item.find(".download-status").is(":visible") && $item.find(".pause.button").is(":visible") && !$item.find(".pause.button").hasClass("disabled"));
-		const isPreparing = $item.data("isPreparing") === true;
+		const isCompleted = $item.attr("course-completed") === "true" || $item.find(".download-success").is(":visible");
+		const isError = $item.find(".download-error").is(":visible") || $item.find(".course-encrypted").is(":visible");
+		const isUserPaused = $item.data("isPaused") === true;
+		const isDownloading = $item.data("isDownloading") === true || $item.data("isPreparing") === true;
 
-		if (isDownloading || isPreparing) {
+		if (isDownloading) {
 			activeCount++;
-		} else if (!isCompleted && !isError && !isEncryptedError && !isPaused && $item.data("isQueued") === true) {
-			queuedItems.push($item);
+		} else if (!isCompleted && !isError && !isUserPaused) {
+			$item.data("isQueued", true);
+			pendingItems.push($item);
 		}
 	});
 
-	console.log(`[processDownloadQueue] Active downloads: ${activeCount}/${maxConcurrent}, Queued: ${queuedItems.length}`);
+	console.log(`[processDownloadQueue] Active downloads: ${activeCount}/${maxConcurrent}, Pending queued: ${pendingItems.length}`);
 
-	while (activeCount < maxConcurrent && queuedItems.length > 0) {
-		const $nextItem = queuedItems.shift();
+	while (activeCount < maxConcurrent && pendingItems.length > 0) {
+		const $nextItem = pendingItems.shift();
 		activeCount++;
 		$nextItem.data("isQueued", false);
+		$nextItem.data("isPaused", false);
+		$nextItem.data("isDownloading", true);
+
+		$nextItem.find(".action.buttons .pause.button").removeClass("disabled");
+		$nextItem.find(".action.buttons .resume.button").addClass("disabled");
+		$nextItem.find(".download-status .label").html(translate("Downloading..."));
+		$nextItem.find(".download-status").show();
 
 		const startFn = $nextItem.data("startDownloadFn");
 		if (typeof startFn === "function") {
 			startFn();
+		} else {
+			const selectedSubtitle = $nextItem.find('input[name="selectedSubtitle"]').val();
+			prepareDownloading($nextItem, selectedSubtitle);
 		}
 	}
 
