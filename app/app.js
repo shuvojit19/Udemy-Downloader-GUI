@@ -544,24 +544,27 @@ function sortDownloads() {
 			const $item = $(el);
 			const isCompleted = $item.attr("course-completed") === "true" || $item.find(".download-success").is(":visible");
 			const isError = $item.find(".download-error").is(":visible") || $item.find(".course-encrypted").is(":visible");
-			const isPaused = ($item.find(".pause.button").hasClass("disabled") || $item.find(".pause.button").is(":hidden")) &&
-				($item.find(".resume.button").is(":visible") && !$item.find(".resume.button").hasClass("disabled"));
-			const isDownloading = $item.data("isDownloading") === true ||
-				($item.find(".download-status").is(":visible") && $item.find(".pause.button").is(":visible") && !$item.find(".pause.button").hasClass("disabled"));
-			const isPreparing = $item.data("isPreparing") === true;
-			const isQueued = $item.data("isQueued") === true || $item.find(".download-status .label").text().includes("Queued");
+			const isPaused = $item.data("isPaused") === true ||
+				(($item.find(".pause.button").hasClass("disabled") || $item.find(".pause.button").is(":hidden")) &&
+				($item.find(".resume.button").is(":visible") && !$item.find(".resume.button").hasClass("disabled")) &&
+				!isCompleted && !isError);
+			const isDownloading = ($item.data("isDownloading") === true || $item.data("isPreparing") === true || $item.data("isQueued") === true) && !isPaused && !isCompleted && !isError;
 
-			// Priority 1: Active / Downloading / Preparing / Queued (AUTOMATICALLY ON TOP)
-			if (isDownloading || isPreparing || isQueued) {
+			// Priority 1: Active ongoing downloads & queued (TOP)
+			if (isDownloading) {
 				return 1;
 			}
-			// Priority 2: Paused (IN THE MIDDLE)
+			// Priority 2: Paused downloads (SECOND)
 			if (isPaused) {
 				return 2;
 			}
-			// Priority 3: Completed / Finished / Error (AT THE BOTTOM)
-			if (isCompleted || isError) {
+			// Priority 3: Download errors (THIRD)
+			if (isError) {
 				return 3;
+			}
+			// Priority 4: Finished / Completed downloads (BOTTOM)
+			if (isCompleted) {
+				return 4;
 			}
 			return 2;
 		};
@@ -1495,27 +1498,81 @@ function startDownload($course, courseData, subTitle = "") {
 
 	function stopDownload(isEncrypted) {
 		$course.data("isDownloading", false);
-		if (downloader._downloads?.length) {
-			downloader._downloads[downloader._downloads.length - 1].stop();
-			$pauseButton.addClass("disabled");
-			$resumeButton.removeClass("disabled");
+		$course.data("isPreparing", false);
+		$course.data("isQueued", false);
+		$course.data("isPaused", true);
 
-			if (isEncrypted) {
-				resetCourse($course, $course.find(".course-encrypted"));
-			}
+		if (downloader._downloads && downloader._downloads.length) {
+			downloader._downloads.forEach((dl) => {
+				try {
+					if (dl && typeof dl.stop === "function") {
+						dl.stop();
+					}
+				} catch (e) {
+					console.warn("dl.stop error:", e.message);
+				}
+			});
 		}
+
+		$pauseButton.addClass("disabled");
+		$resumeButton.removeClass("disabled");
+		$course.find(".download-status .label").html(translate("Paused"));
+		$course.find(".download-status").show();
+
+		if (isEncrypted) {
+			resetCourse($course, $course.find(".course-encrypted"));
+		}
+
 		processDownloadQueue();
 		sortDownloads();
 		saveDownloads(false);
 	}
 
 	function resumeDownload() {
-		$course.data("isDownloading", true);
-		if (downloader._downloads?.length) {
-			downloader._downloads[downloader._downloads.length - 1].resume();
+		$course.data("isPaused", false);
+		$course.data("isPreparing", false);
+
+		const activeCount = getActiveDownloadCount();
+		const maxConcurrent = Settings.download.maxConcurrentDownloads || 4;
+
+		if (activeCount >= maxConcurrent) {
+			$course.data("isDownloading", false);
+			$course.data("isQueued", true);
+			$pauseButton.addClass("disabled");
+			$resumeButton.removeClass("disabled");
+			$course.find(".download-status .label").html(translate("Queued (Waiting for active download slot...)"));
+			$course.find(".download-status").show();
+		} else {
+			$course.data("isDownloading", true);
+			$course.data("isQueued", false);
+
+			let resumedAny = false;
+			if (downloader._downloads && downloader._downloads.length) {
+				downloader._downloads.forEach((dl) => {
+					try {
+						if (dl && typeof dl.resume === "function") {
+							dl.resume();
+							resumedAny = true;
+						}
+					} catch (e) {
+						console.warn("dl.resume error:", e.message);
+					}
+				});
+			}
+
+			if (!resumedAny) {
+				const startFn = $course.data("startDownloadFn");
+				if (typeof startFn === "function") {
+					startFn();
+				}
+			}
+
 			$pauseButton.removeClass("disabled");
 			$resumeButton.addClass("disabled");
+			$course.find(".download-status .label").html(translate("Downloading..."));
+			$course.find(".download-status").show();
 		}
+
 		processDownloadQueue();
 		sortDownloads();
 		saveDownloads(false);
