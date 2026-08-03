@@ -1033,6 +1033,8 @@ function getDownloadHistory(courseId) {
 	return Settings.downloadHistory.find((x) => x.id === courseId) || undefined;
 }
 
+let isDownloadsLoaded = false;
+
 function saveDownloads(shouldQuitApp = false) {
 	if (shouldQuitApp) {
 		ui.busySavingHistory(true);
@@ -1046,6 +1048,11 @@ function saveDownloads(shouldQuitApp = false) {
 
 		const downloadedCourses = [];
 		const downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item");
+
+		if (!isDownloadsLoaded && !downloads.length) {
+			console.log("[saveDownloads] Skipped saving empty list before renderDownloads complete.");
+			return;
+		}
 
 		downloads.each((_index, element) => {
 			const $el = $(element);
@@ -1083,8 +1090,10 @@ function saveDownloads(shouldQuitApp = false) {
 			);
 		});
 
-		Settings.downloadedCourses = downloadedCourses;
-		console.log(`[saveDownloads] Saved ${downloadedCourses.length} courses to settings.`);
+		if (downloads.length > 0 || isDownloadsLoaded) {
+			Settings.downloadedCourses = downloadedCourses;
+			console.log(`[saveDownloads] Saved ${downloadedCourses.length} courses to settings.`);
+		}
 	} catch (error) {
 		console.error("[saveDownloads] Error persisting downloads:", error);
 	} finally {
@@ -1170,6 +1179,143 @@ async function saveM3u($course) {
     }
 }
 
+async function renderDownloads() {
+	const $downloadsSection = $(".ui.downloads.section .ui.courses.items");
+	if ($downloadsSection.find(".ui.course.item").length) {
+		return;
+	}
+
+	const downloadedCourses = Settings.downloadedCourses || [];
+	if (!downloadedCourses.length) {
+		isDownloadsLoaded = true;
+	} else {
+		ui.busyLoadDownloads(true);
+
+		function addCourseToDOM(course) {
+			return new Promise((resolve, _reject) => {
+				const $courseItem = createCourseElement(course, true);
+				$downloadsSection.append($courseItem);
+
+				if (!course.completed) {
+					if (Settings.download.autoStartDownload) {
+						prepareDownloading($courseItem, course.selectedSubtitle);
+					} else {
+						$courseItem.data("isQueued", true);
+						$courseItem.find(".download-status .label").html(course.progressStatus || translate("Queued (Auto-Paused)"));
+						$courseItem.find(".download-status").show();
+						$courseItem.find(".action.buttons .download.button").addClass("disabled");
+						$courseItem.find(".action.buttons .pause.button").addClass("disabled");
+						$courseItem.find(".action.buttons .resume.button").removeClass("disabled");
+					}
+				}
+
+				resolve();
+			});
+		}
+
+		const promises = downloadedCourses.map((course) => addCourseToDOM(course));
+
+		Promise.all(promises)
+			.then(() => {
+				isDownloadsLoaded = true;
+				ui.busyLoadDownloads(false);
+				processDownloadQueue();
+				sortDownloads();
+			})
+			.catch((e) => {
+				console.trace("Error adding courses:", e);
+				ui.busyLoadDownloads(false);
+			});
+	}
+}
+
+async function fetchCourseContent(courseId, courseName, courseUrl) {
+	try {
+		// ui.busyBuildCourseData(true);
+
+		const response = await udemyService.fetchCourseContent(courseId, "all");
+		if (!response) {
+			// ui.busyBuildCourseData(false);
+			return null;
+		}
+
+		const courseData = {
+			name: courseName,
+			url: courseUrl,
+			chapters: [],
+			totalLectures: 0,
+			encryptedVideos: 0,
+			errorCount: 0,
+			availableSubs: {},
+		};
+
+		let chapterData = null;
+		response.results.forEach((item) => {
+			if (item._class === "chapter") {
+				if (chapterData) {
+					courseData.chapters.push(chapterData);
+				}
+				chapterData = {
+					name: item.title,
+					lectures: [],
+				};
+			} else if (item._class === "lecture") {
+				const asset = item.asset;
+				const assetType = asset?.asset_type ? asset.asset_type.toLowerCase() : "";
+
+				if (!chapterData) {
+					chapterData = {
+						name: "Chapter 1",
+						lectures: [],
+					};
+				}
+
+				const lecture = {
+					name: item.title,
+					type: assetType || "unsupported",
+					quality: null,
+					src: null,
+					attachments: [],
+					supplementary_assets: item.supplementary_assets || [],
+				};
+
+				if (assetType === "video") {
+					const stream = udemyService._prepareStreamSource(asset);
+					lecture.quality = stream.quality;
+					lecture.src = stream.src;
+				} else if (assetType === "e-book" || assetType === "file") {
+					lecture.src = asset.download_urls?.[assetType]?.[0]?.file || null;
+				}
+
+				if (item.has_captions && item.captions?.length) {
+					item.captions.forEach((caption) => {
+						const lang = caption.locale_id.split("_")[0];
+						if (!courseData.availableSubs[lang]) {
+							courseData.availableSubs[lang] = [];
+						}
+						courseData.availableSubs[lang].push({
+							title: caption.title,
+							url: caption.url,
+						});
+					});
+				}
+
+				chapterData.lectures.push(lecture);
+				courseData.totalLectures++;
+			}
+		});
+
+		if (chapterData) {
+			courseData.chapters.push(chapterData);
+		}
+
+		// ui.busyBuildingCourseData(false);
+		return courseData;
+	} catch (error) {
+		handleApiError(error, "EBUILDING_COURSE_DATA", courseName, true);
+	}
+}
+
 async function prepareDownloading($course, subtitle) {
 	const courseId = $course.attr("course-id");
 	const courseName = $course.find(".coursename").text();
@@ -1192,26 +1338,27 @@ async function prepareDownloading($course, subtitle) {
 			pathDownloaded: $course.find('input[name="path-downloaded"]').val() || "",
 			individualProgress: 0,
 			combinedProgress: 0,
-			progressStatus: translate("Queued"),
+			progressStatus: translate("Fetching course details..."),
 		};
 		$downloadItem = createCourseElement(courseObj, true);
 		$downloads.prepend($downloadItem);
 	}
 
-	const executeDownloadPreparation = async () => {
-		$course.data("isPreparing", true);
-		$downloadItem.data("isPreparing", true);
-		$downloadItem.data("isQueued", false);
-		ui.prepareDownloading($course);
-		ui.prepareDownloading($downloadItem);
+	$course.data("isPreparing", true);
+	$downloadItem.data("isPreparing", true);
+	$downloadItem.data("isQueued", false);
+	ui.prepareDownloading($course);
+	ui.prepareDownloading($downloadItem);
 
-		const skipSubtitles = Boolean(Settings.download.skipSubtitles);
-		const defaultSubtitle = skipSubtitles ? null : (subtitle ?? Settings.download.defaultSubtitle);
+	const skipSubtitles = Boolean(Settings.download.skipSubtitles);
+	const defaultSubtitle = skipSubtitles ? null : (subtitle ?? Settings.download.defaultSubtitle);
 
-		console.clear();
+	console.clear();
 
-		let courseData = null;
-		try {
+	let courseData = $downloadItem.data("courseData");
+	try {
+		// ALWAYS FETCH COURSE DETAILS IMMEDIATELY ON ADDITION IF NOT ALREADY FETCHED
+		if (!courseData) {
 			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
 			if (!courseData) {
 				$course.data("isPreparing", false);
@@ -1221,57 +1368,73 @@ async function prepareDownloading($course, subtitle) {
 				processDownloadQueue();
 				return;
 			}
+			$downloadItem.data("courseData", courseData);
+			$course.data("courseData", courseData);
+		}
 
-			if (courseData.encryptedVideos > 0 && !Settings.download.continueDonwloadingEncrypted) {
-				$course.data("isPreparing", false);
-				$downloadItem.data("isPreparing", false);
-				resetCourse($course, $course.find(".course-encrypted"));
-				resetCourse($downloadItem, $downloadItem.find(".course-encrypted"));
-				processDownloadQueue();
-				return;
-			}
-
-			try {
-				console.log("Downloading", courseData);
-				askForSubtitle(courseData.availableSubs, courseData.totalLectures, defaultSubtitle, (sub) => {
-					$course.data("isPreparing", false);
-					$downloadItem.data("isPreparing", false);
-					startDownload($downloadItem, courseData, sub);
-				});
-			} catch (error) {
-				throw utils.newError("EASK_FOR_SUBTITLE", error.message);
-			}
-		} catch (error) {
+		if (courseData.encryptedVideos > 0 && !Settings.download.continueDonwloadingEncrypted) {
 			$course.data("isPreparing", false);
 			$downloadItem.data("isPreparing", false);
-			const errorName = error.name === "EASK_FOR_SUBTITLE" ? error.name : "EPREPARE_DOWNLOADING";
-			handleApiError(error, errorName, null, false);
-			ui.busyOff();
-			$course.find(".prepare-downloading").hide();
-			$downloadItem.find(".prepare-downloading").hide();
-			resetCourse($course, $course.find(".download-error"), Settings.download.autoRetry, courseData, subtitle);
-			resetCourse($downloadItem, $downloadItem.find(".download-error"), Settings.download.autoRetry, courseData, subtitle);
+			resetCourse($course, $course.find(".course-encrypted"));
+			resetCourse($downloadItem, $downloadItem.find(".course-encrypted"));
 			processDownloadQueue();
+			return;
 		}
-	};
 
-	$downloadItem.data("startDownloadFn", executeDownloadPreparation);
+		const startDirectDownload = (selectedSub) => {
+			$course.data("isPreparing", false);
+			$downloadItem.data("isPreparing", false);
+			startDownload($downloadItem, courseData, selectedSub || defaultSubtitle || "");
+		};
 
-	const activeCount = getActiveDownloadCount();
-	const maxConcurrent = Settings.download.maxConcurrentDownloads || 4;
+		$downloadItem.data("startDownloadFn", () => startDirectDownload(defaultSubtitle));
 
-	if (activeCount >= maxConcurrent) {
-		$downloadItem.data("isQueued", true);
-		$downloadItem.find(".download-status .label").html(translate("Queued (Waiting for active download slot...)"));
-		$downloadItem.find(".download-status").show();
-		$course.find(".download-status .label").html(translate("Queued"));
-		$course.find(".download-status").show();
-		console.log(`[prepareDownloading] Queued course ${courseId}. Active downloads: ${activeCount}/${maxConcurrent}`);
-	} else {
-		executeDownloadPreparation();
+		const activeCount = getActiveDownloadCount();
+		const maxConcurrent = Settings.download.maxConcurrentDownloads || 4;
+
+		if (activeCount >= maxConcurrent) {
+			// Auto-pause and queue in Downloads section with all details pre-fetched!
+			$course.data("isPreparing", false);
+			$downloadItem.data("isPreparing", false);
+			$downloadItem.data("isQueued", true);
+			$downloadItem.data("isDownloading", false);
+
+			ui.showProgress($course, false);
+			ui.showProgress($downloadItem, false);
+
+			$downloadItem.find(".download-status .label").html(translate("Queued (Auto-Paused)"));
+			$downloadItem.find(".download-status").show();
+			$course.find(".download-status .label").html(translate("Queued (Auto-Paused)"));
+			$course.find(".download-status").show();
+
+			$downloadItem.find(".action.buttons .download.button").addClass("disabled");
+			$downloadItem.find(".action.buttons .pause.button").addClass("disabled");
+			$downloadItem.find(".action.buttons .resume.button").removeClass("disabled");
+
+			$course.find(".action.buttons .download.button").addClass("disabled");
+			$course.find(".action.buttons .pause.button").addClass("disabled");
+			$course.find(".action.buttons .resume.button").removeClass("disabled");
+
+			console.log(`[prepareDownloading] Fetched details for course ${courseId}. Queued & Auto-paused (Active: ${activeCount}/${maxConcurrent})`);
+			sortDownloads();
+			saveDownloads(false);
+		} else {
+			askForSubtitle(courseData.availableSubs, courseData.totalLectures, defaultSubtitle, (sub) => {
+				startDirectDownload(sub);
+			});
+		}
+	} catch (error) {
+		$course.data("isPreparing", false);
+		$downloadItem.data("isPreparing", false);
+		const errorName = error.name === "EASK_FOR_SUBTITLE" ? error.name : "EPREPARE_DOWNLOADING";
+		handleApiError(error, errorName, null, false);
+		ui.busyOff();
+		$course.find(".prepare-downloading").hide();
+		$downloadItem.find(".prepare-downloading").hide();
+		resetCourse($course, $course.find(".download-error"), Settings.download.autoRetry, courseData, subtitle);
+		resetCourse($downloadItem, $downloadItem.find(".download-error"), Settings.download.autoRetry, courseData, subtitle);
+		processDownloadQueue();
 	}
-	sortDownloads();
-	saveDownloads(false);
 }
 
 function startDownload($course, courseData, subTitle = "") {

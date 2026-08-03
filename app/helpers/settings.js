@@ -95,10 +95,18 @@ const Settings = (() => {
 		if (!settings.get("download")) {
 			settings.set("download", DownloadDefaultOptions);
 		} else {
-			// certifica que exista todas as propriedades
 			Object.keys(DownloadDefaultOptions).forEach((key) => {
-				settings.get(`download.${key}`, DownloadDefaultOptions[key]);
+				if (settings.get(`download.${key}`) === undefined) {
+					settings.set(`download.${key}`, DownloadDefaultOptions[key]);
+				}
 			});
+		}
+
+		if (!settings.get("downloadedCourses")) {
+			settings.set("downloadedCourses", []);
+		}
+		if (!settings.get("downloadedHistory")) {
+			settings.set("downloadedHistory", []);
 		}
 	}
 
@@ -207,7 +215,7 @@ const Settings = (() => {
 		},
 		/** @type {Array<DownloadedCourses>} */
 		get downloadedCourses() {
-			return this.get("downloadedCourses");
+			return this.get("downloadedCourses", []);
 		},
 		/** @type {Array<DownloadedCourses>} */
 		set downloadedCourses(value) {
