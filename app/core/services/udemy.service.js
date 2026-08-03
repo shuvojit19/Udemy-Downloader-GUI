@@ -71,13 +71,11 @@ class UdemyService {
 	}
 
 	async _prepareStreamsSource(courseId, items) {
-		// console.log("Preparing stream urls...", items);
 		try {
 			const promises = items.map((el) => this._prepareStreamSource(courseId, el));
-			await Promise.all(promises);
-			// console.log("All streams prepared");
+			await Promise.allSettled(promises);
 		} catch (error) {
-			throw this._error("EPREPARE_STREAMS_SOURCE", error.message);
+			console.warn("Error in _prepareStreamsSource:", error);
 		}
 	}
 
@@ -128,46 +126,35 @@ class UdemyService {
 					} else {
 						// auto
 						if (!isEncrypted) {
-							const m3u8 = new M3U8Service(url);
-							// console.log('Before loading playlist');
-							const playlist = await m3u8.loadPlaylist();
-							// console.log('After loading playlist', playlist);
+							try {
+								const m3u8 = new M3U8Service(url);
+								const playlist = await m3u8.loadPlaylist();
 
-							for (const item of playlist) {
-								// console.log(`for of playlist ${title}`, item);
-								const numericQuality = item.quality;
+								for (const item of playlist) {
+									const numericQuality = item.quality;
 
-								if (numericQuality < minQuality) {
-									minQuality = numericQuality;
+									if (numericQuality < minQuality) {
+										minQuality = numericQuality;
+									}
+									if (numericQuality > maxQuality) {
+										maxQuality = numericQuality;
+									}
+									if (!sources[numericQuality.toString()]) {
+										sources[numericQuality.toString()] = { type, url: item.url };
+									}
 								}
-								if (numericQuality > maxQuality) {
-									maxQuality = numericQuality;
-								}
-								if (!sources[numericQuality.toString()]) {
-									sources[numericQuality.toString()] = { type, url: item.url };
+							} catch (m3u8Err) {
+								console.warn(`[m3u8.loadPlaylist] Could not parse auto playlist for ${title}:`, m3u8Err.message);
+								if (!sources["auto"]) {
+									sources["auto"] = { type, url };
 								}
 							}
-
-							// playlist.forEach(item => {
-							// const numericQuality = item.quality;
-
-							// if (numericQuality < minQuality) {
-							//     minQuality = numericQuality;
-							// }
-							// if (numericQuality > maxQuality) {
-							//     maxQuality = numericQuality;
-							// }
-							// if (!sources[numericQuality.toString()]) {
-							//     sources[numericQuality.toString()] = { type, url: item.url }
-							// }
-							// });
 						}
 					}
 				}
 			});
 
-			await Promise.all(promises);
-			// console.log(`All stream urls converted for assetName: ${title}`);
+			await Promise.allSettled(promises);
 
 			return {
 				minQuality: minQuality === Number.MAX_SAFE_INTEGER ? (sources["auto"] ? "auto" : null) : minQuality.toString(),
