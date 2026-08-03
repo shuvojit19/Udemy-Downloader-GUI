@@ -595,9 +595,12 @@ function processDownloadQueue() {
 		const isCompleted = $item.attr("course-completed") === "true" || $item.find(".download-success").is(":visible");
 		const isError = $item.find(".download-error").is(":visible") || $item.find(".course-encrypted").is(":visible");
 		const isUserPaused = $item.data("isPaused") === true;
-		const isDownloading = $item.data("isDownloading") === true || $item.data("isPreparing") === true;
 
-		if (isDownloading) {
+		// Active if data flag is true OR if pause button is active & visible in DOM
+		const isDownloading = ($item.data("isDownloading") === true || $item.data("isPreparing") === true) ||
+			($item.find(".download-status").is(":visible") && $item.find(".pause.button").is(":visible") && !$item.find(".pause.button").hasClass("disabled"));
+
+		if (isDownloading && !isCompleted && !isError && !isUserPaused) {
 			activeCount++;
 		} else if (!isCompleted && !isError && !isUserPaused) {
 			$item.data("isQueued", true);
@@ -1389,9 +1392,13 @@ async function prepareDownloading($course, subtitle) {
 }
 
 function startDownload($course, courseData, subTitle = "") {
+	const startFn = $course.data("startDownloadFn");
+	const cachedCourseData = $course.data("courseData") || courseData;
+
 	$course.data("isDownloading", true);
 	$course.data("isPreparing", false);
 	$course.data("isQueued", false);
+	$course.data("isPaused", false);
 	ui.showProgress($course, true);
 
 	const subtitle = (Array.isArray(subTitle) ? subTitle[0] : subTitle).split("|");
@@ -1399,7 +1406,14 @@ function startDownload($course, courseData, subTitle = "") {
 	$course.find('input[name="selectedSubtitle"]').val(subtitle);
 	$course.find('input[name="encryptedvideos"]').val(courseData.encryptedVideos);
 
-	const $clone = $course.clone();
+	const $clone = $course.clone(true, true);
+	$clone.data("isDownloading", true);
+	$clone.data("isPreparing", false);
+	$clone.data("isQueued", false);
+	$clone.data("isPaused", false);
+	if (startFn) $clone.data("startDownloadFn", startFn);
+	if (cachedCourseData) $clone.data("courseData", cachedCourseData);
+
 	const $downloads = $(".ui.downloads.section .ui.courses.items");
 	const $courses = $(".ui.courses.section .ui.courses.items");
 
