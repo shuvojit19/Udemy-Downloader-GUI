@@ -1773,10 +1773,17 @@ function startDownload($course, courseData, subTitle = "") {
 			}
 
 			function downloadAttachments(index, totalAttachments) {
+				if (!totalAttachments || index >= totalAttachments || !lectureData.attachments || !lectureData.attachments[index]) {
+					$progressCombined.progress("increment");
+					downloaded++;
+					downloadLecture(chapterIndex, ++lectureIndex, countLectures, sanitizedChapterName);
+					return;
+				}
+
 				$progressIndividual.progress("reset");
 
 				const attachment = lectureData.attachments[index];
-				const attachmentName = attachment.name.trim();
+				const attachmentName = (attachment.name || "attachment").trim();
 
 				setLabelQuality(attachment.quality);
 
@@ -1784,10 +1791,10 @@ function startDownload($course, courseData, subTitle = "") {
 					const wfDir = downloadDirectory + "/" + courseName + "/" + sanitizedChapterName;
 					fs.writeFile(
 						utils.getSequenceName(lectureIndex + 1, countLectures, attachmentName + ".html", `.${index + 1} `, wfDir).fullPath,
-						attachment.src,
+						attachment.src || "",
 						function () {
 							index++;
-							if (index == totalAttachments) {
+							if (index >= totalAttachments) {
 								$progressCombined.progress("increment");
 								downloaded++;
 								downloadLecture(chapterIndex, ++lectureIndex, countLectures, sanitizedChapterName);
@@ -1797,8 +1804,8 @@ function startDownload($course, courseData, subTitle = "") {
 						}
 					);
 				} else {
-					let fileExtension = attachment.src.split("/").pop().split("?").shift().split(".").pop();
-					fileExtension = attachment.name.split(".").pop() == fileExtension ? "" : "." + fileExtension;
+					let fileExtension = (attachment.src || "").split("/").pop().split("?").shift().split(".").pop() || "";
+					fileExtension = attachment.name.split(".").pop() == fileExtension ? "" : (fileExtension ? "." + fileExtension : "");
 
 					const lectureSeqName = utils.getSequenceName(
 						lectureIndex + 1,
@@ -1819,16 +1826,16 @@ function startDownload($course, courseData, subTitle = "") {
 						endDownload();
 						return;
 					} else {
-						var dl = downloader.download(attachment.src, lectureSeqName.fullPath);
+						var dl = downloader.download(attachment.src || "", lectureSeqName.fullPath);
 					}
 
-					dlStart(dl, attachment.type.includes("video"), endDownload);
+					dlStart(dl, (attachment.type || "").includes("video"), endDownload);
 
 					function endDownload() {
 						index++;
 
 						clearInterval(timerDownloader);
-						if (index == totalAttachments) {
+						if (index >= totalAttachments) {
 							$progressCombined.progress("increment");
 							downloaded++;
 							downloadLecture(chapterIndex, ++lectureIndex, countLectures, sanitizedChapterName);
@@ -1841,11 +1848,13 @@ function startDownload($course, courseData, subTitle = "") {
 
 			function checkAttachment() {
 				$progressIndividual.progress("reset");
-				const attachment = lectureData.attachments;
+				const rawAttachments = lectureData.attachments;
+				const attachments = (rawAttachments && Array.isArray(rawAttachments)) ? rawAttachments.filter((att) => att && att.name) : [];
 
-				if (attachment) {
-					lectureData.attachments.sort(utils.dynamicSort("name"));
-					downloadAttachments(0, attachment.length);
+				if (attachments.length > 0) {
+					attachments.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+					lectureData.attachments = attachments;
+					downloadAttachments(0, attachments.length);
 				} else {
 					if (lectureData.isEncrypted) {
 						appendLog("Video with DRM Protection", `Chapter: ${chapterName}\nLecture: ${lectureName}`);
