@@ -1,5 +1,7 @@
 "use strict";
 
+process.noDeprecation = true;
+
 const { shell, remote, ipcRenderer } = require("electron");
 const { dialog, BrowserWindow } = remote;
 const axios = require("axios");
