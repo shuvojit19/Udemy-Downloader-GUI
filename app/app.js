@@ -542,29 +542,38 @@ function sortDownloads() {
 	$items.sort((a, b) => {
 		const getCategoryPriority = (el) => {
 			const $item = $(el);
-			const isCompleted = $item.attr("course-completed") === "true";
+			const isCompleted = $item.attr("course-completed") === "true" || $item.find(".download-success").is(":visible");
 			const isError = $item.find(".download-error").is(":visible") || $item.find(".course-encrypted").is(":visible");
-			const isPaused = $item.find(".pause.button").hasClass("disabled") && $item.find(".resume.button").is(":visible") && !$item.find(".resume.button").hasClass("disabled");
-			const isDownloading = $item.data("isDownloading") === true || ($item.find(".download-status").is(":visible") && $item.find(".pause.button").is(":visible") && !$item.find(".pause.button").hasClass("disabled"));
+			const isPaused = ($item.find(".pause.button").hasClass("disabled") || $item.find(".pause.button").is(":hidden")) &&
+				($item.find(".resume.button").is(":visible") && !$item.find(".resume.button").hasClass("disabled"));
+			const isDownloading = $item.data("isDownloading") === true ||
+				($item.find(".download-status").is(":visible") && $item.find(".pause.button").is(":visible") && !$item.find(".pause.button").hasClass("disabled"));
 			const isPreparing = $item.data("isPreparing") === true;
-			const isQueued = $item.data("isQueued") === true;
+			const isQueued = $item.data("isQueued") === true || $item.find(".download-status .label").text().includes("Queued");
 
-			// Priority 1: Active / Downloading / Preparing / Queued (ON TOP)
+			// Priority 1: Active / Downloading / Preparing / Queued (AUTOMATICALLY ON TOP)
 			if (isDownloading || isPreparing || isQueued) {
 				return 1;
 			}
-			// Priority 2: Paused (IN MIDDLE)
+			// Priority 2: Paused (IN THE MIDDLE)
 			if (isPaused) {
 				return 2;
 			}
-			// Priority 3: Completed / Finished / Error (AT BOTTOM)
+			// Priority 3: Completed / Finished / Error (AT THE BOTTOM)
 			if (isCompleted || isError) {
 				return 3;
 			}
 			return 2;
 		};
 
-		return getCategoryPriority(a) - getCategoryPriority(b);
+		const pA = getCategoryPriority(a);
+		const pB = getCategoryPriority(b);
+
+		if (pA !== pB) {
+			return pA - pB;
+		}
+
+		return 0;
 	});
 
 	$.each($items, (_index, element) => {
