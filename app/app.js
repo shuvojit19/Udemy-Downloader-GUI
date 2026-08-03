@@ -644,6 +644,7 @@ function resetCourse($course, $elMessage, autoRetry, courseData, subtitle) {
 
 	processDownloadQueue();
 	sortDownloads();
+	saveDownloads(false);
 }
 
 function renderCourses(response, isResearch = false) {
@@ -1023,65 +1024,71 @@ function getDownloadHistory(courseId) {
 	return Settings.downloadHistory.find((x) => x.id === courseId) || undefined;
 }
 
-function saveDownloads(shouldQuitApp) {
-	ui.busySavingHistory(true);
-
-	function getProgress($progress) {
-		const dataPercent = $progress.attr("data-percent");
-		return parseInt(dataPercent, 10);
+function saveDownloads(shouldQuitApp = false) {
+	if (shouldQuitApp) {
+		ui.busySavingHistory(true);
 	}
 
-	const downloadedCourses = [];
-	const downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item");
-
-	downloads.each((_index, element) => {
-		const $el = $(element);
-		const hasProgress = $el.find(".progress.active").length > 0;
-		const individualProgress = hasProgress ? getProgress($el.find(".download-status .individual.progress")) : 0;
-		const combinedProgress = hasProgress ? getProgress($el.find(".download-status .combined.progress")) : 0;
-		const isCompleted = !hasProgress && $el.attr("course-completed") === "true";
-
-		const courseData = {
-			id: Number($el.attr("course-id")),
-			url: $el.attr("course-url"),
-			name: $el.find(".coursename").text(),
-			image: $el.find(".image img").attr("src"),
-			individualProgress: Math.min(100, individualProgress),
-			combinedProgress: Math.min(100, combinedProgress),
-			completed: isCompleted,
-			progressStatus: $el.find(".download-status .label").text(),
-			encryptedVideos: Number($el.find('input[name="encryptedvideos"]').val()),
-			selectedSubtitle: $el.find('input[name="selectedSubtitle"]').val(),
-			pathDownloaded: $el.find('input[name="path-downloaded"]').val(),
-		};
-
-		downloadedCourses.push(courseData);
-		addDownloadHistory(
-			courseData.id,
-			courseData.name,
-			courseData.completed,
-			courseData.encryptedVideos,
-			courseData.selectedSubtitle,
-			courseData.pathDownloaded
-		);
-	});
-
-	Settings.downloadedCourses = downloadedCourses.sort((a, b) => {
-		if (a.completed === b.completed) {
-			return b.combinedProgress - a.combinedProgress;
+	try {
+		function getProgress($progress) {
+			const dataPercent = $progress.attr("data-percent");
+			return parseInt(dataPercent, 10) || 0;
 		}
-		return a.completed ? 1 : -1;
-	});
 
-	if (shouldQuitApp) {
-		ipcRenderer.send("quitApp");
-	} else {
-		ui.busySavingHistory(false);
+		const downloadedCourses = [];
+		const downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item");
+
+		downloads.each((_index, element) => {
+			const $el = $(element);
+			const courseId = $el.attr("course-id");
+			if (!courseId) return;
+
+			const hasProgress = $el.find(".progress.active").length > 0;
+			const individualProgress = hasProgress ? getProgress($el.find(".download-status .individual.progress")) : 0;
+			const combinedProgress = hasProgress ? getProgress($el.find(".download-status .combined.progress")) : 0;
+			const isCompleted = $el.attr("course-completed") === "true";
+
+			const courseData = {
+				id: courseId,
+				url: $el.attr("course-url") || "",
+				name: $el.find(".coursename").text() || "",
+				title: $el.find(".coursename").text() || "",
+				image: $el.find(".image img").attr("src") || "",
+				individualProgress: Math.min(100, individualProgress),
+				combinedProgress: Math.min(100, combinedProgress),
+				completed: isCompleted,
+				progressStatus: $el.find(".download-status .label").text() || "",
+				encryptedVideos: Number($el.find('input[name="encryptedvideos"]').val() || 0),
+				selectedSubtitle: $el.find('input[name="selectedSubtitle"]').val() || "",
+				pathDownloaded: $el.find('input[name="path-downloaded"]').val() || "",
+			};
+
+			downloadedCourses.push(courseData);
+			addDownloadHistory(
+				courseData.id,
+				courseData.name,
+				courseData.completed,
+				courseData.encryptedVideos,
+				courseData.selectedSubtitle,
+				courseData.pathDownloaded
+			);
+		});
+
+		Settings.downloadedCourses = downloadedCourses;
+		console.log(`[saveDownloads] Saved ${downloadedCourses.length} courses to settings.`);
+	} catch (error) {
+		console.error("[saveDownloads] Error persisting downloads:", error);
+	} finally {
+		if (shouldQuitApp) {
+			ipcRenderer.send("quitApp");
+		} else {
+			ui.busySavingHistory(false);
+		}
 	}
 }
 
 function removeCurseDownloads(courseId) {
-	const $downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item"); //.slice(0);
+	const $downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item");
 
 	$downloads.each((_index, element) => {
 		const $el = $(element);
@@ -1089,6 +1096,7 @@ function removeCurseDownloads(courseId) {
 			$el.remove();
 		}
 	});
+	saveDownloads(false);
 }
 
 async function saveM3u($course) {
@@ -1254,6 +1262,7 @@ async function prepareDownloading($course, subtitle) {
 		executeDownloadPreparation();
 	}
 	sortDownloads();
+	saveDownloads(false);
 }
 
 function startDownload($course, courseData, subTitle = "") {
@@ -1287,6 +1296,7 @@ function startDownload($course, courseData, subTitle = "") {
 	$course.push($clone[0]);
 	$clone.data("isDownloading", true);
 	sortDownloads();
+	saveDownloads(false);
 
 	const courseName = sanitize(courseData["name"]); //, { replacement: (s) => "? ".indexOf(s) > -1 ? "" : "-", }).trim();
 	const $progressCombined = $course.find(".combined.progress");
@@ -1384,6 +1394,7 @@ function startDownload($course, courseData, subTitle = "") {
 		}
 		processDownloadQueue();
 		sortDownloads();
+		saveDownloads(false);
 	}
 
 	function resumeDownload() {
@@ -1395,6 +1406,7 @@ function startDownload($course, courseData, subTitle = "") {
 		}
 		processDownloadQueue();
 		sortDownloads();
+		saveDownloads(false);
 	}
 
 	function setLabelQuality(label) {
