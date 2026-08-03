@@ -697,57 +697,70 @@ function renderCourses(response, isResearch = false) {
 
 async function renderDownloads() {
 	const $downloadsSection = $(".ui.downloads.section .ui.courses.items");
-	if ($downloadsSection.find(".ui.course.item").length) {
-		return;
-	}
 
-	const downloadedCourses = Settings.downloadedCourses || [];
+	// Deduplicate any existing items in DOM
+	const seenIds = new Set();
+	$downloadsSection.find(".ui.course.item").each(function () {
+		const id = String($(this).attr("course-id") || "").trim();
+		if (!id || seenIds.has(id)) {
+			$(this).remove();
+		} else {
+			seenIds.add(id);
+		}
+	});
+
+	const rawDownloadedCourses = Settings.downloadedCourses || [];
+	const downloadedCourses = [];
+	const settingSeenIds = new Set();
+	rawDownloadedCourses.forEach((c) => {
+		const idStr = String(c.id || "").trim();
+		if (idStr && !settingSeenIds.has(idStr)) {
+			settingSeenIds.add(idStr);
+			downloadedCourses.push(c);
+		}
+	});
+
 	if (!downloadedCourses.length) {
-		// if ($downloadsSection.find(".ui.yellow.message").length) {
-		//     return;
-		// }
-		// $downloadsSection.append(
-		//     `<div class="ui yellow message">
-		//     ${translate("There are no Downloads to display")}
-		//     </div>`
-		// );
+		isDownloadsLoaded = true;
 	} else {
 		ui.busyLoadDownloads(true);
-		// await utils.sleep(10);
-		// // downloadedCourses.forEach(course => {
-		// downloadedCourses.map(course => {
-		//     const $courseItem = htmlCourseCard(course, true);
-		//     $downloadsSection.append($courseItem);
-
-		//     if (!course.completed && Settings.download.autoStartDownload) {
-		//         initializeDownload($courseItem, course.selectedSubtitle);
-		//         // $courseItem.find(".action.buttons").find(".pause.button").removeClass("disabled");
-		//     }
-		// });
-		// ui.busyLoadDownloads(false);
 
 		function addCourseToDOM(course) {
 			return new Promise((resolve, _reject) => {
+				const idStr = String(course.id || "").trim();
+				if ($downloadsSection.find(`[course-id="${idStr}"]`).length) {
+					resolve();
+					return;
+				}
+
 				const $courseItem = createCourseElement(course, true);
 				$downloadsSection.append($courseItem);
 
-				if (!course.completed && Settings.download.autoStartDownload) {
-					prepareDownloading($courseItem, course.selectedSubtitle);
+				if (!course.completed) {
+					if (Settings.download.autoStartDownload) {
+						prepareDownloading($courseItem, course.selectedSubtitle);
+					} else {
+						$courseItem.data("isQueued", true);
+						$courseItem.find(".download-status .label").html(course.progressStatus || translate("Queued (Auto-Paused)"));
+						$courseItem.find(".download-status").show();
+						$courseItem.find(".action.buttons .download.button").addClass("disabled");
+						$courseItem.find(".action.buttons .pause.button").addClass("disabled");
+						$courseItem.find(".action.buttons .resume.button").removeClass("disabled");
+					}
 				}
 
-				// Simula atraso de 200ms para demonstração
-				// setTimeout(() => { resolve(); }, 200);
 				resolve();
 			});
 		}
 
 		const promises = downloadedCourses.map((course) => addCourseToDOM(course));
 
-		// Executa todas as Promessas em paralelo
 		Promise.all(promises)
 			.then(() => {
+				isDownloadsLoaded = true;
 				ui.busyLoadDownloads(false);
 				processDownloadQueue();
+				sortDownloads();
 			})
 			.catch((e) => {
 				console.trace("Error adding courses:", e);
@@ -1054,10 +1067,18 @@ function saveDownloads(shouldQuitApp = false) {
 			return;
 		}
 
+		const seenCourseIds = new Set();
+
 		downloads.each((_index, element) => {
 			const $el = $(element);
-			const courseId = $el.attr("course-id");
+			const courseId = String($el.attr("course-id") || "").trim();
 			if (!courseId) return;
+
+			if (seenCourseIds.has(courseId)) {
+				$el.remove();
+				return;
+			}
+			seenCourseIds.add(courseId);
 
 			const hasProgress = $el.find(".progress.active").length > 0;
 			const individualProgress = hasProgress ? getProgress($el.find(".download-status .individual.progress")) : 0;
@@ -1236,7 +1257,13 @@ async function prepareDownloading($course, subtitle) {
 
 	// Ensure the course item is IMMEDIATELY added to the Downloads tab DOM so searching another course will not lose it!
 	const $downloads = $(".ui.downloads.section .ui.courses.items");
-	let $downloadItem = $downloads.find(`[course-id="${courseId}"]`);
+	const idStr = String(courseId || "").trim();
+	let $downloadItem = $downloads.find(`[course-id="${idStr}"]`);
+
+	if ($downloadItem.length > 1) {
+		$downloadItem.slice(1).remove();
+		$downloadItem = $downloadItem.eq(0);
+	}
 
 	if (!$downloadItem.length) {
 		const courseObj = {
