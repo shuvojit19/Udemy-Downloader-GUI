@@ -533,6 +533,45 @@ function getActiveDownloadCount() {
 	return activeCount;
 }
 
+function sortDownloads() {
+	const $downloadsContainer = $(".ui.downloads.section .ui.courses.items");
+	const $items = $downloadsContainer.children(".ui.course.item").get();
+
+	if (!$items || !$items.length) return;
+
+	$items.sort((a, b) => {
+		const getCategoryPriority = (el) => {
+			const $item = $(el);
+			const isCompleted = $item.attr("course-completed") === "true";
+			const isError = $item.find(".download-error").is(":visible") || $item.find(".course-encrypted").is(":visible");
+			const isPaused = $item.find(".pause.button").hasClass("disabled") && $item.find(".resume.button").is(":visible") && !$item.find(".resume.button").hasClass("disabled");
+			const isDownloading = $item.data("isDownloading") === true || ($item.find(".download-status").is(":visible") && $item.find(".pause.button").is(":visible") && !$item.find(".pause.button").hasClass("disabled"));
+			const isPreparing = $item.data("isPreparing") === true;
+			const isQueued = $item.data("isQueued") === true;
+
+			// Priority 1: Active / Downloading / Preparing / Queued (ON TOP)
+			if (isDownloading || isPreparing || isQueued) {
+				return 1;
+			}
+			// Priority 2: Paused (IN MIDDLE)
+			if (isPaused) {
+				return 2;
+			}
+			// Priority 3: Completed / Finished / Error (AT BOTTOM)
+			if (isCompleted || isError) {
+				return 3;
+			}
+			return 2;
+		};
+
+		return getCategoryPriority(a) - getCategoryPriority(b);
+	});
+
+	$.each($items, (_index, element) => {
+		$downloadsContainer.append(element);
+	});
+}
+
 function processDownloadQueue() {
 	const maxConcurrent = Settings.download.maxConcurrentDownloads || 4;
 	const $downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item");
@@ -568,6 +607,8 @@ function processDownloadQueue() {
 			startFn();
 		}
 	}
+
+	sortDownloads();
 }
 
 function resetCourse($course, $elMessage, autoRetry, courseData, subtitle) {
@@ -602,6 +643,7 @@ function resetCourse($course, $elMessage, autoRetry, courseData, subtitle) {
 	}
 
 	processDownloadQueue();
+	sortDownloads();
 }
 
 function renderCourses(response, isResearch = false) {
@@ -1211,6 +1253,7 @@ async function prepareDownloading($course, subtitle) {
 	} else {
 		executeDownloadPreparation();
 	}
+	sortDownloads();
 }
 
 function startDownload($course, courseData, subTitle = "") {
@@ -1243,6 +1286,7 @@ function startDownload($course, courseData, subTitle = "") {
 	}
 	$course.push($clone[0]);
 	$clone.data("isDownloading", true);
+	sortDownloads();
 
 	const courseName = sanitize(courseData["name"]); //, { replacement: (s) => "? ".indexOf(s) > -1 ? "" : "-", }).trim();
 	const $progressCombined = $course.find(".combined.progress");
@@ -1339,6 +1383,7 @@ function startDownload($course, courseData, subTitle = "") {
 			}
 		}
 		processDownloadQueue();
+		sortDownloads();
 	}
 
 	function resumeDownload() {
@@ -1349,6 +1394,7 @@ function startDownload($course, courseData, subTitle = "") {
 			$resumeButton.addClass("disabled");
 		}
 		processDownloadQueue();
+		sortDownloads();
 	}
 
 	function setLabelQuality(label) {
