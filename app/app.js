@@ -1804,6 +1804,12 @@ function startDownload($course, courseData, subTitle = "") {
 						}
 					);
 				} else {
+					if (!attachment.src || typeof attachment.src !== "string" || !attachment.src.trim() || !attachment.src.startsWith("http")) {
+						appendLog("Skip Attachment - Invalid URL", `Attachment: ${attachmentName}`);
+						endDownload();
+						return;
+					}
+
 					let fileExtension = (attachment.src || "").split("/").pop().split("?").shift().split(".").pop() || "";
 					fileExtension = attachment.name.split(".").pop() == fileExtension ? "" : (fileExtension ? "." + fileExtension : "");
 
@@ -1826,7 +1832,7 @@ function startDownload($course, courseData, subTitle = "") {
 						endDownload();
 						return;
 					} else {
-						var dl = downloader.download(attachment.src || "", lectureSeqName.fullPath);
+						var dl = downloader.download(attachment.src, lectureSeqName.fullPath);
 					}
 
 					dlStart(dl, (attachment.type || "").includes("video"), endDownload);
@@ -1903,7 +1909,6 @@ function startDownload($course, courseData, subTitle = "") {
 				});
 
 				let download_this_sub = availables[0] || Object.keys(subtitles)[0] || "";
-				// Prefer non "[Auto]" subs (likely entered by the creator of the lecture.)
 				if (availables.length > 1) {
 					for (const key of availables) {
 						if (availables[key].indexOf("[Auto]") == -1 || availables[key].indexOf(`[${translate("Auto")}]`) == -1) {
@@ -1911,24 +1916,21 @@ function startDownload($course, courseData, subTitle = "") {
 							break;
 						}
 					}
-					// availables.forEach(key=> {
-					//     if (availables[key].indexOf("[Auto]") == -1 || availables[key].indexOf(`[${translate("Auto")}]`) == -1) {
-					//         download_this_sub = availables[key];
-					//         return;
-					//     }
-					// })
 				}
 
-				https.get(subtitles[download_this_sub], function (response) {
-					response.pipe(vttFileWS);
-				});
+				if (subtitles && download_this_sub && subtitles[download_this_sub]) {
+					https.get(subtitles[download_this_sub], function (response) {
+						response.pipe(vttFileWS);
+					});
+				} else {
+					checkAttachment();
+				}
 			}
 
 			// read url as string or ArrayBuffer
 			async function getFile(url, binary) {
 				let retry = 0;
-				// console.log("getFile", { url, binary });
-				// on error retry 3 times
+				if (!url || typeof url !== "string" || !url.startsWith("http")) return null;
 				while (retry < 3) {
 					try {
 						const response = await fetch(url);
@@ -1951,6 +1953,7 @@ function startDownload($course, courseData, subTitle = "") {
 
 			// read highest quality playlist
 			async function getPlaylist(url) {
+				if (!url || typeof url !== "string" || !url.startsWith("http")) return [];
 				const playlist = await getFile(url, false);
 
 				if (!playlist) return [];
@@ -2008,7 +2011,7 @@ function startDownload($course, courseData, subTitle = "") {
 				const wfDir = `${downloadDirectory}/${courseName}/${sanitizedChapterName}`;
 				fs.writeFile(
 					utils.getSequenceName(lectureIndex + 1, countLectures, sanitizedLectureName + ".html", ". ", wfDir).fullPath,
-					lectureData.src,
+					lectureData.src || "",
 					function () {
 						if (lectureData.attachments) {
 							lectureData.attachments.sort(utils.dynamicSort("name"));
@@ -2031,11 +2034,13 @@ function startDownload($course, courseData, subTitle = "") {
 					`${downloadDirectory}/${courseName}/${sanitizedChapterName}`
 				);
 
-				// $lecture_name.html(`${courseData["chapters"][chapterIndex].name}\\${lectureName}`);
 				const skipLecture = Settings.download.type == Settings.DownloadType.OnlyAttachments;
 
 				if (lectureType !== "application/x-mpegurl") {
-					if (fs.existsSync(seqName.fullPath) || skipLecture || lectureData.isEncrypted) {
+					if (fs.existsSync(seqName.fullPath) || skipLecture || lectureData.isEncrypted || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
+						if (!lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.startsWith("http")) {
+							appendLog("Skip Lecture - Invalid or missing URL", `Course: ${courseName}`, `Lecture: ${lectureName}`);
+						}
 						endDownloadAttachment();
 						return;
 					}
@@ -2050,9 +2055,12 @@ function startDownload($course, courseData, subTitle = "") {
 						var dl = downloader.download(lectureData.src, seqName.fullPath);
 					}
 
-					dlStart(dl, lectureType.includes("video"), endDownloadAttachment);
+					dlStart(dl, (lectureType || "").includes("video"), endDownloadAttachment);
 				} else {
-					if (fs.existsSync(seqName.fullPath) || skipLecture || lectureData.isEncrypted) {
+					if (fs.existsSync(seqName.fullPath) || skipLecture || lectureData.isEncrypted || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
+						if (!lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.startsWith("http")) {
+							appendLog("Skip Lecture - Invalid or missing m3u8 URL", `Course: ${courseName}`, `Lecture: ${lectureName}`);
+						}
 						endDownloadAttachment();
 						return;
 					}
