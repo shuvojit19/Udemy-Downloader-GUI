@@ -176,7 +176,7 @@ class UdemyService {
 		}
 	}
 
-	async #fetchUrl(url, method = "GET", httpTimeout = this.#timeout) {
+	async #fetchUrl(url, method = "GET", httpTimeout = this.#timeout, retries = 5) {
 		// Verifique o cache antes de fazer a requisição
 		const cachedData = this.#cache.get(url);
 		if (cachedData) {
@@ -185,20 +185,31 @@ class UdemyService {
 		}
 
 		console.log(`Fetching URL: ${url}`);
-		try {
-			const response = await axios({
-				url,
-				method,
-				headers: this.#headerAuth,
-				timeout: this.#timeout,
-			});
+		for (let attempt = 1; attempt <= retries; attempt++) {
+			try {
+				const response = await axios({
+					url,
+					method,
+					headers: this.#headerAuth,
+					timeout: httpTimeout || this.#timeout,
+				});
 
-			// Armazene o resultado no cache
-			this.#cache.set(url, response.data);
-			return response.data;
-		} catch (e) {
-			console.error(`Error fetching URL: ${url}`, e);
-			throw e;
+				// Armazene o resultado no cache
+				this.#cache.set(url, response.data);
+				return response.data;
+			} catch (e) {
+				const status = e?.response?.status;
+				const isRetryable = !status || status >= 500 || status === 429 || e.code === "ETIMEDOUT" || e.code === "ECONNRESET";
+
+				if (isRetryable && attempt < retries) {
+					const delay = Math.pow(2, attempt) * 1000 + Math.floor(Math.random() * 1000);
+					console.warn(`[#fetchUrl] Attempt ${attempt}/${retries} failed for ${url} (status: ${status || e.code}). Retrying in ${delay}ms...`);
+					await new Promise((resolve) => setTimeout(resolve, delay));
+				} else {
+					console.error(`Error fetching URL: ${url}`, e);
+					throw e;
+				}
+			}
 		}
 	}
 
@@ -207,7 +218,7 @@ class UdemyService {
 		return await this.#fetchUrl(endpoint, method, httpTimeout);
 	}
 
-	async fetchLoadMore(url, httpTimeout = this.#timeout) {
+	async fetchLoadMore(url, httpTimeout = this.#timeout, retries = 5) {
 		// Verifique o cache antes de fazer a requisição
 		const cachedData = this.#cache.get(url);
 		if (cachedData) {
@@ -216,20 +227,31 @@ class UdemyService {
 		}
 
 		// console.log(`Fetching URL: ${url}`);
-		try {
-			const response = await axios({
-				url,
-				method: "GET",
-				headers: this.#headerAuth,
-				timeout: this.#timeout,
-			});
+		for (let attempt = 1; attempt <= retries; attempt++) {
+			try {
+				const response = await axios({
+					url,
+					method: "GET",
+					headers: this.#headerAuth,
+					timeout: httpTimeout || this.#timeout,
+				});
 
-			// Armazene o resultado no cache
-			this.#cache.set(url, response.data);
-			return response.data;
-		} catch (e) {
-			console.error(`Error fetching URL: ${url}`, e);
-			throw e;
+				// Armazene o resultado no cache
+				this.#cache.set(url, response.data);
+				return response.data;
+			} catch (e) {
+				const status = e?.response?.status;
+				const isRetryable = !status || status >= 500 || status === 429 || e.code === "ETIMEDOUT" || e.code === "ECONNRESET";
+
+				if (isRetryable && attempt < retries) {
+					const delay = Math.pow(2, attempt) * 1000 + Math.floor(Math.random() * 1000);
+					console.warn(`[fetchLoadMore] Attempt ${attempt}/${retries} failed for ${url} (status: ${status || e.code}). Retrying in ${delay}ms...`);
+					await new Promise((resolve) => setTimeout(resolve, delay));
+				} else {
+					console.error(`Error fetching URL: ${url}`, e);
+					throw e;
+				}
+			}
 		}
 	}
 
@@ -368,7 +390,9 @@ class UdemyService {
 
 			loadContent = false;
 		} catch (error) {
-			if (error?.response?.status === 503) {
+			const status = error?.response?.status;
+			if (status === 503 || status === 504 || status === 502 || status === 500) {
+				console.warn(`[fetchCourseContent] Primary endpoint failed with status ${status}. Switching to fallback fetchCourse...`);
 				contentData = await this.fetchCourse(courseId, httpTimeout);
 				loadContent = contentType !== "less";
 			} else {
