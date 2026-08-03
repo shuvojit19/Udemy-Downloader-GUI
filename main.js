@@ -1,3 +1,5 @@
+process.noDeprecation = true;
+
 const { app, BrowserWindow, Menu, ipcMain, screen, shell } = require("electron");
 const { join } = require("path");
 
