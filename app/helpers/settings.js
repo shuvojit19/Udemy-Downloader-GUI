@@ -76,6 +76,7 @@ const Settings = (() => {
 		autoRetry: false,
 		videoQuality: "Auto",
 		seqZeroLeft: false,
+		maxConcurrentDownloads: 4,
 	});
 
 	let _language = null;
