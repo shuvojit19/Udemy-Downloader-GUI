@@ -1,0 +1,84 @@
+{
+  "name": "udeler",
+  "productName": "Udeler",
+  "version": "1.14.0",
+  "description": "A cross platform (Windows, Mac, Linux) desktop application for downloading Udemy Courses.",
+  "main": "main.js",
+  "type": "commonjs",
+  "vars": {
+    "urlHelp": "https://heliomarpm.notion.site/heliomarpm/How-to-get-an-Access-Token-b0ce5f89073c4965b47721197dcb2497",
+    "urlToggles": "https://raw.githubusercontent.com/heliomarpm/feature_toggles/main/udemy-downloader-gui.json",
+    "urlDonate": "https://www.paypal.com/donate?business=KBVHLR7Z9V7B2&no_recurring=0&currency_code=USD"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heliomarpm/udemy-downloader-gui.git"
+  },
+  "license": "ISC",
+  "author": {
+    "name": "Faisal Umair",
+    "email": "eff.umair@gmail.com",
+    "url": "https://github.com/FaisalUmair"
+  },
+  "scripts": {
+    "dev": "electron . --developer",
+    "start": "electron .",
+    "format": "prettier --write \"app/**/*.js\"",
+    "postinstall": "electron-builder install-app-deps",
+    "build": "electron-builder",
+    "build:w32": "electron-builder -w \"--ia32\"",
+    "deploy": "node ./node_modules/gh_deploy/index.js",
+    "build:local": "npm run build && npm run build:w32",
+    "sync:locales": "node ./sync-locales.js"
+  },
+  "dependencies": {
+    "@sentry/electron": "4.24.0",
+    "axios": "^1.7.9",
+    "cookie": "^1.0.2",
+    "dialogs": "^2.0.1",
+    "electron-settings": "3.2.0",
+    "jquery": "^3.7.1",
+    "mt-files-downloader": "github:FaisalUmair/mt-files-downloader-wrapper",
+    "node-cache": "^5.1.2",
+    "node-vtt-to-srt": "^1.0.1",
+    "sanitize-filename": "^1.6.3"
+  },
+  "devDependencies": {
+    "electron": "11.5.0",
+    "electron-builder": "^25.1.8",
+    "electron-reload": "^2.0.0-alpha.1",
+    "gh_deploy": "github:heliomarpm/gh_deploy",
+    "prettier": "^3.4.2"
+  },
+  "build": {
+    "appId": "com.faisalumair.udeler",
+    "productName": "Udeler",
+    "copyright": "Copyright © 2017 - 2023 | ${author}",
+    "artifactName": "${productName}_Setup-v${version}_${os}-${arch}.${ext}",
+    "portable": {
+      "artifactName": "${productName}_Portable-v${version}_${os}-${arch}.${ext}"
+    },
+    "directories": {
+      "buildResources": "app/assets/images/build",
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "category": "Utility",
+      "target": [
+        "AppImage",
+        "deb",
+        "freebsd",
+        "rpm"
+      ]
+    }
+  }
+}
