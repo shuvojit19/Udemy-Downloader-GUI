@@ -1986,7 +1986,11 @@ function sendNotification(pathCourse, courseName, urlImage = null) {
 
 function clearLogArea() {
 	loggers.length = 0;
-	$(".ui.logger.section .ui.list").html("");
+	$(".ui.logger.section .ui.list").html(`
+		<div class="ui info message" id="logger-empty-msg" style="margin: 10px;">
+			<i class="info circle icon"></i> ${translate("No log entries yet. Event logs and error tracebacks will appear here automatically.")}
+		</div>
+	`);
 	clearBagdeLoggers();
 }
 
@@ -2004,21 +2008,30 @@ function clearBagdeLoggers() {
 function appendLog(title, error, additionalDescription = "") {
 	let description =
 		error instanceof Error
-			? error.message //`${error.message}\n ${error.stack}`
+			? `${error.message}\n${error.stack}`
 			: typeof error == "object"
-				? JSON.stringify(error)
-				: error;
+				? JSON.stringify(error, null, 2)
+				: (error || "");
 
 	description += additionalDescription !== "" ? "\n\n" + additionalDescription : "";
 
+	$("#logger-empty-msg").remove();
+
+	const timeStr = new Date().toLocaleTimeString();
+	const formattedDesc = String(description)
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/\n/g, "<br>");
+
 	// item added to list to display
 	$(".ui.logger.section .ui.list").prepend(
-		`<div class="item">
-        <div class="header">
-        ${title}
-        </div>
-        <samp>${description.replace("\n", "<br>").replace("\r", "<br>")}</samp>
-        </div>`
+		`<div class="item" style="padding: 12px; border-bottom: 1px solid #e0e0e0;">
+			<div class="header" style="color: #2185d0; font-weight: bold; margin-bottom: 4px;">
+				<i class="clock outline icon"></i> [${timeStr}] ${title}
+			</div>
+			<div style="font-family: monospace; white-space: pre-wrap; word-break: break-all; background: #f8f9fa; padding: 8px 12px; border-radius: 4px; border: 1px solid #e0e0e0; font-size: 12px;">${formattedDesc}</div>
+		</div>`
 	);
 
 	// item added to array to save txt file

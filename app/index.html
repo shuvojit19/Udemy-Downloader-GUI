@@ -211,6 +211,8 @@
                       </div>
                     </div>
 
+                    <div class="ui divider"></div>
+
                     <div class="field">
                       <label>${translate("Language (Requires App Restart)")}</label>
                       <div class="ui fluid search selection language dropdown">
@@ -222,6 +224,8 @@
                         </div>
                       </div>
                     </div>
+
+                    <div class="ui divider"></div>
 
                     <div class="field">
                       <label>${translate("Default Subtitle for download")}</label>
@@ -250,18 +254,34 @@
                         </label>
                       </div>
                     </div>
+
+                    <div class="ui divider"></div>
+
+                    <div class="field">
+                      <label>${translate("Max Concurrent Course Downloads")}</label>
+                      <input placeholder="${translate("Max active downloads")}" type="number" min="1" max="10" name="maxconcurrentdownloads">
+                    </div>
+
+                    <div class="ui divider"></div>
+
                     <div class="field">
                       <div class="ui toggle checkbox">
                         <input type="checkbox" name="auto-start-download">
                         <label>${translate("Start pending downloads at startup")}</label>
                       </div>
                     </div>
+
+                    <div class="ui divider"></div>
+
                     <div class="field">
                       <div class="ui toggle checkbox">
                         <input type="checkbox" name="continue-downloading-encrypted">
                         <label>${translate("Skip lessons Blocked by DRM encryption while downloading")}</label>
                       </div>
                     </div>
+
+                    <div class="ui divider"></div>
+
                     <div class="field">
                       <div class="ui toggle checkbox">
                         <input type="checkbox" name="enabledownloadstartend">
@@ -277,16 +297,13 @@
                         <label>${translate("Download End")}</label>
                         <input placeholder="${translate("End Download at")}" type="number" min="1" name="downloadend">
                       </div>
-                    <div class="field">
-                      <label>${translate("Max Concurrent Course Downloads")}</label>
-                      <input placeholder="${translate("Max active downloads")}" type="number" min="1" max="10" name="maxconcurrentdownloads">
                     </div>
 
-                    <div class="ui  divider"></div>
+                    <div class="ui divider"></div>
 
                     <div class="field">
                       <label>${translate("Video Quality")}</label>
-                      <small style="color:#444;">${translate("Note: When the selected option is not available in the Udemy API, the highest quality available will be downloaded.")} </small>
+                      <small style="color:#666; display: block; margin-bottom: 5px;">${translate("Note: When the selected option is not available in the Udemy API, the highest quality available will be downloaded.")}</small>
                       <div class="ui fluid search selection dropdown">
                         <input type="hidden" name="videoquality">
                         <i class="dropdown icon"></i>
@@ -304,24 +321,31 @@
                       </div>
                     </div>
 
+                    <div class="ui divider"></div>
+
                     <div class="field">
-                      <div class="ui slider checkbox">
-                        <input type="radio" name="downloadType" value="0">
-                        <label>${translate("Download Lectures and Attachments")}</label>
+                      <label>${translate("Download Content Type")}</label>
+                      <div class="field" style="margin-top: 5px;">
+                        <div class="ui slider checkbox">
+                          <input type="radio" name="downloadType" value="0">
+                          <label>${translate("Download Lectures and Attachments")}</label>
+                        </div>
+                      </div>
+                      <div class="field">
+                        <div class="ui slider checkbox">
+                          <input type="radio" name="downloadType" value="1">
+                          <label>${translate("Download only Lectures")}</label>
+                        </div>
+                      </div>
+                      <div class="field">
+                        <div class="ui slider checkbox">
+                          <input type="radio" name="downloadType" value="2">
+                          <label>${translate("Download only Attachments")}</label>
+                        </div>
                       </div>
                     </div>
-                    <div class="field">
-                      <div class="ui slider checkbox">
-                        <input type="radio" name="downloadType" value="1">
-                        <label>${translate("Download only Lectures")}</label>
-                      </div>
-                    </div>
-                    <div class="field">
-                      <div class="ui slider checkbox">
-                        <input type="radio" name="downloadType" value="2">
-                        <label>${translate("Download only Attachments")}</label>
-                      </div>
-                    </div>
+
+                    <div class="ui divider"></div>
 
                     <div class="field">
                       <div class="ui toggle checkbox">
@@ -329,12 +353,18 @@
                         <label>${translate("Skip Subtitles")}</label>
                       </div>
                     </div>
+
+                    <div class="ui divider"></div>
+
                     <div class="field">
                       <div class="ui toggle checkbox">
                         <input type="checkbox" name="seq-zero-left">
                         <label>${translate("Enumerate download with zero left")}</label>
                       </div>
                     </div>
+
+                    <div class="ui divider"></div>
+
                     <div class="field">
                       <div class="ui toggle checkbox">
                         <input type="checkbox" name="autoretry">
@@ -345,7 +375,7 @@
                   </div>
 
                   <div class="ui horizontal divider"></div>
-                  <button class="floating-btn" type="submit">
+                  <button class="floating-btn" type="submit" title="${translate("Save Settings")}">
                     <i class="save outline icon"></i>
                   </button>
                 </form>
@@ -517,13 +547,19 @@
                 </div>
               </div>
               <div class="ui logger section">
-                <div class="ui top attached header">
-                  <h5>
+                <div class="ui top attached header" style="display: flex; justify-content: space-between; align-items: center;">
+                  <h5 style="margin: 0;">
                     <i class="ui code icon"></i> ${translate("Udeler Logger")}
                   </h5>
-                  <i id="clear_logger" class="recycle icon"></i> <i id="save_logger" class="save icon"></i>
+                  <div>
+                    <button class="ui tiny compact button" id="clear_logger" title="${translate("Clear Logger")}"><i class="recycle icon"></i> ${translate("Clear")}</button>
+                    <button class="ui tiny compact primary button" id="save_logger" title="${translate("Save Log File")}"><i class="save icon"></i> ${translate("Save Log")}</button>
+                  </div>
                 </div>
-                <div class="ui list divided unstackable attached segment" style="margin-top: 0px !important;">
+                <div class="ui list divided unstackable attached segment" style="margin-top: 0px !important; min-height: 250px; max-height: 500px; overflow-y: auto;">
+                  <div class="ui info message" id="logger-empty-msg" style="margin: 10px;">
+                    <i class="info circle icon"></i> ${translate("No log entries yet. Event logs and error tracebacks will appear here automatically.")}
+                  </div>
                 </div>
               </div>
             </div>
