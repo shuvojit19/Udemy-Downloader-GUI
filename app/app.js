@@ -1582,11 +1582,16 @@ function startDownload($course, courseData, subTitle = "") {
 	}
 
 	function setLabelQuality(label) {
-		const lastClass = $downloadQuality.attr("class").split(" ").pop();
+		if (label === undefined || label === null) {
+			label = "Auto";
+		}
+		const strLabel = String(label);
+		const currentClass = $downloadQuality.attr("class") || "";
+		const lastClass = currentClass.split(" ").pop() || "";
 		$downloadQuality
-			.html(label.toString() + (!isNaN(parseFloat(label)) ? "p" : ""))
+			.html(strLabel + (!isNaN(parseFloat(strLabel)) ? "p" : ""))
 			.removeClass(lastClass)
-			.addClass(labelColorMap[label] || "grey");
+			.addClass(labelColorMap[label] || labelColorMap[strLabel] || "grey");
 	}
 
 	function downloadChapter(chapterIndex, lectureIndex) {
