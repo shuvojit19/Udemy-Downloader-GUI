@@ -1814,6 +1814,18 @@ function startDownload($course, courseData, subTitle = "") {
 									notStarted = 0;
 									reStarted++;
 								}
+							} else {
+								console.warn("[dlStart] Download unable to start after retries. Skipping file:", dl?.filePath);
+								clearInterval(timerDownloader);
+								try {
+									if (dl?.filePath && fs.existsSync(dl.filePath + ".mtd")) {
+										fs.unlinkSync(dl.filePath + ".mtd");
+									}
+								} catch (e) {}
+								if (typeof callback === "function") {
+									callback();
+								}
+								return;
 							}
 							$downloadSpeedValue.html(0);
 							break;
@@ -1963,17 +1975,31 @@ function startDownload($course, courseData, subTitle = "") {
 					);
 
 					// try deleting the download started without data
-					if (fs.existsSync(lectureSeqName.fullPath + ".mtd") && !fs.statSync(lectureSeqName.fullPath + ".mtd").size) {
-						fs.unlinkSync(lectureSeqName.fullPath + ".mtd");
-					}
+					try {
+						if (fs.existsSync(lectureSeqName.fullPath + ".mtd") && !fs.statSync(lectureSeqName.fullPath + ".mtd").size) {
+							fs.unlinkSync(lectureSeqName.fullPath + ".mtd");
+						}
+					} catch (e) {}
 
-					if (fs.existsSync(lectureSeqName.fullPath + ".mtd")) {
-						var dl = downloader.resumeDownload(lectureSeqName.fullPath);
-					} else if (fs.existsSync(lectureSeqName.fullPath)) {
+					let dl;
+					try {
+						if (fs.existsSync(lectureSeqName.fullPath + ".mtd")) {
+							dl = downloader.resumeDownload(lectureSeqName.fullPath);
+						} else if (fs.existsSync(lectureSeqName.fullPath)) {
+							endDownload();
+							return;
+						} else {
+							dl = downloader.download(attachment.src, lectureSeqName.fullPath);
+						}
+					} catch (err) {
+						console.error("[downloadAttachments] Downloader instantiation error:", err.message);
 						endDownload();
 						return;
-					} else {
-						var dl = downloader.download(attachment.src, lectureSeqName.fullPath);
+					}
+
+					if (!dl) {
+						endDownload();
+						return;
 					}
 
 					dlStart(dl, (attachment.type || "").includes("video"), endDownload);
