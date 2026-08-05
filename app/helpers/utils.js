@@ -76,14 +76,12 @@ const utils = {
 	 * @return {object} An object containing the generated name and full path of the sequence.
 	 */
 	getSequenceName: (index, count, name, separatorIndex = ". ", path = null) => {
-		// const sanitize = require("sanitize-filename");
-		// const sanitizeName = sanitize(name, { replacement: (s) => "? ".indexOf(s) > -1 ? "" : "-", }).trim();
-
-		const indexName = sanitize(`${index}${separatorIndex}${name}`);
+		const sanitizedName = sanitize(name);
+		const indexName = sanitize(`${index}${separatorIndex}${sanitizedName}`);
 		const indexPath = path ? `${path}/${indexName}` : indexName;
 
 		const sequence = utils.zeroPad(index, count);
-		const sequenceName = `${sequence}${separatorIndex}${name}`;
+		const sequenceName = sanitize(`${sequence}${separatorIndex}${sanitizedName}`);
 		const sequencePath = path ? `${path}/${sequenceName}` : sequenceName;
 
 		if (indexPath === sequencePath) {
@@ -91,15 +89,23 @@ const utils = {
 		} else {
 			if (Boolean(Settings.download.seqZeroLeft)) {
 				// if it exists then rename it with leading zero
-				if (fs.existsSync(indexPath)) {
-					fs.renameSync(indexPath, sequencePath);
+				try {
+					if (fs.existsSync(indexPath)) {
+						fs.renameSync(indexPath, sequencePath);
+					}
+				} catch (e) {
+					console.warn("[getSequenceName] renameSync error:", e.message);
 				}
 
 				return { name: sequenceName, fullPath: sequencePath };
 			} else {
 				// if it exists then rename it without leading zero
-				if (fs.existsSync(sequencePath)) {
-					fs.renameSync(sequencePath, indexPath);
+				try {
+					if (fs.existsSync(sequencePath)) {
+						fs.renameSync(sequencePath, indexPath);
+					}
+				} catch (e) {
+					console.warn("[getSequenceName] renameSync error:", e.message);
 				}
 
 				return { name: indexName, fullPath: indexPath };
