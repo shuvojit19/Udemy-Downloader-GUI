@@ -82,6 +82,7 @@ const ui = {
 
                 <button class="ui basic yellow open-in-browser button"><i class="desktop icon"></i></button>
                 <button class="ui basic teal open-dir button"><i class="folder open icon"></i></button>
+                <button class="ui basic purple verify button" title="Verify Course Files"><i class="shield check icon"></i></button>
             </div>
             <div class="ui horizontal divider"></div>
             <progress class="prepare-downloading" style="width: 100%; display: none;"></progress>

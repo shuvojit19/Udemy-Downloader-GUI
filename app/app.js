@@ -128,6 +128,11 @@ $(".ui.dashboard .content").on("click", ".download.button, .download-error", fun
 	prepareDownloading($(this).parents(".course"));
 });
 
+$(".ui.dashboard .content").on("click", ".verify.button", function (e) {
+	e.stopImmediatePropagation();
+	verifyCourseDownloads($(this).parents(".course"));
+});
+
 $(".ui.dashboard .content").on("click", "#clear_logger", clearLogArea);
 
 $(".ui.dashboard .content").on("click", "#save_logger", saveLogFile);
@@ -1388,6 +1393,123 @@ async function prepareDownloading($course, subtitle) {
 		resetCourse($course, $course.find(".download-error"), Settings.download.autoRetry, courseData, subtitle);
 		resetCourse($downloadItem, $downloadItem.find(".download-error"), Settings.download.autoRetry, courseData, subtitle);
 		processDownloadQueue();
+	}
+}
+
+async function verifyCourseDownloads($course) {
+	const courseId = String($course.attr("course-id") || "").trim();
+	const courseName = $course.find(".coursename").text();
+	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
+
+	if (!courseId) return;
+
+	$course.find(".download-success").hide();
+	$course.find(".download-error").hide();
+	$course.find(".course-encrypted").hide();
+
+	$course.find(".download-status .label").html(translate("Verifying course files..."));
+	$course.find(".download-status").show();
+	ui.showProgress($course, true);
+
+	let courseData = $course.data("courseData");
+	try {
+		if (!courseData) {
+			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
+			if (!courseData) {
+				$course.find(".download-status .label").html(translate("Failed to fetch course details for verification."));
+				ui.showProgress($course, false);
+				return;
+			}
+			$course.data("courseData", courseData);
+		}
+
+		const sanitizedCourseName = sanitize(courseData.name.trim());
+		const downloadDirectory = Settings.downloadDirectory();
+		const courseDir = `${downloadDirectory}/${sanitizedCourseName}`;
+
+		let totalItemsChecked = 0;
+		const missingItems = [];
+
+		courseData.chapters.forEach((chapter, chapterIndex) => {
+			const countLectures = chapter.lectures.length;
+			const sanitizedChapterName = sanitize(chapter.name.trim());
+			const seqChapterName = utils.getSequenceName(
+				chapterIndex + 1,
+				courseData.chapters.length,
+				sanitizedChapterName,
+				". ",
+				courseDir
+			).name;
+
+			chapter.lectures.forEach((lecture, lectureIndex) => {
+				const sanitizedLectureName = sanitize(lecture.name.trim());
+				const lectureType = (lecture.type || "").toLowerCase();
+
+				if (lectureType === "article" || lectureType === "url") {
+					totalItemsChecked++;
+					const wfDir = `${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`;
+					const htmlFile = utils.getSequenceName(lectureIndex + 1, countLectures, sanitizedLectureName + ".html", ". ", wfDir).fullPath;
+					if (!fs.existsSync(htmlFile) || fs.statSync(htmlFile).size === 0) {
+						missingItems.push({ type: "html", path: htmlFile });
+					}
+				} else {
+					totalItemsChecked++;
+					const seqName = utils.getSequenceName(
+						lectureIndex + 1,
+						countLectures,
+						sanitizedLectureName + (lectureType === "file" ? ".pdf" : ".mp4"),
+						". ",
+						`${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
+					);
+
+					if (!fs.existsSync(seqName.fullPath) || fs.statSync(seqName.fullPath).size === 0) {
+						missingItems.push({ type: "lecture", path: seqName.fullPath });
+					}
+				}
+
+				if (lecture.attachments && Array.isArray(lecture.attachments)) {
+					lecture.attachments.forEach((att, attIndex) => {
+						if (!att || !att.name) return;
+						totalItemsChecked++;
+						const attachmentName = (att.name || "attachment").trim();
+						let fileExtension = (att.src || "").split("/").pop().split("?").shift().split(".").pop() || "";
+						fileExtension = att.name.split(".").pop() === fileExtension ? "" : (fileExtension ? "." + fileExtension : "");
+
+						const attSeqName = utils.getSequenceName(
+							lectureIndex + 1,
+							countLectures,
+							sanitize(attachmentName) + fileExtension,
+							`.${attIndex + 1} `,
+							`${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
+						);
+
+						if (!fs.existsSync(attSeqName.fullPath) || fs.statSync(attSeqName.fullPath).size === 0) {
+							missingItems.push({ type: "attachment", path: attSeqName.fullPath });
+						}
+					});
+				}
+			});
+		});
+
+		ui.showProgress($course, false);
+
+		if (missingItems.length === 0) {
+			$course.find(".download-status .label").html(`${translate("Verified Complete")} (${totalItemsChecked} ${translate("items present")})`).css("color", "#48ca56");
+			$course.attr("course-completed", true);
+			$course.find(".download-success").show();
+			$course.find(".download-status").show();
+			appendLog("Course Verification", `Course: ${courseName}\nStatus: Verified 100% Complete! (${totalItemsChecked} items intact)`);
+			saveDownloads(false);
+		} else {
+			appendLog("Course Verification", `Course: ${courseName}\nStatus: ${missingItems.length} missing items detected out of ${totalItemsChecked}. Re-downloading missing files...`);
+			$course.find(".download-status .label").html(`${translate("Missing")} ${missingItems.length} ${translate("files — Re-downloading missing items...")}`);
+			$course.attr("course-completed", "");
+			prepareDownloading($course, $course.find('input[name="selectedSubtitle"]').val());
+		}
+	} catch (error) {
+		ui.showProgress($course, false);
+		appendLog("EVERIFY_COURSE", error);
+		$course.find(".download-status .label").html(translate("Verification failed. Check logger for details."));
 	}
 }
 
