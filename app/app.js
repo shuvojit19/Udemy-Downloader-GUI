@@ -648,6 +648,17 @@ function processDownloadQueue() {
 		return seqA - seqB;
 	});
 
+	// Update Queue Labels (Queue #1, Queue #2...) for all pending items
+	pendingItems.forEach((element, index) => {
+		const $item = $(element);
+		const queueRank = index + 1;
+		$item.find(".download-status .label").html(`${translate("Queued")} #${queueRank}`);
+		$item.find(".download-status").show();
+		$item.find(".action.buttons .download.button").addClass("disabled");
+		$item.find(".action.buttons .pause.button").addClass("disabled");
+		$item.find(".action.buttons .resume.button").removeClass("disabled");
+	});
+
 	console.log(`[processDownloadQueue] Active downloads: ${activeCount}/${maxConcurrent}, Pending queued: ${pendingItems.length}`);
 
 	while (activeCount < maxConcurrent && pendingItems.length > 0) {
@@ -1719,47 +1730,34 @@ function startDownload($course, courseData, subTitle = "") {
 	function resumeDownload() {
 		$course.data("isPaused", false);
 		$course.data("isPreparing", false);
+		$course.data("isDownloading", true);
+		$course.data("isQueued", false);
 
-		const activeCount = getActiveDownloadCount();
-		const maxConcurrent = Settings.download.maxConcurrentDownloads || 4;
-
-		if (activeCount >= maxConcurrent) {
-			$course.data("isDownloading", false);
-			$course.data("isQueued", true);
-			$pauseButton.addClass("disabled");
-			$resumeButton.removeClass("disabled");
-			$course.find(".download-status .label").html(translate("Queued (Waiting for active download slot...)"));
-			$course.find(".download-status").show();
-		} else {
-			$course.data("isDownloading", true);
-			$course.data("isQueued", false);
-
-			let resumedAny = false;
-			if (downloader._downloads && downloader._downloads.length) {
-				downloader._downloads.forEach((dl) => {
-					try {
-						if (dl && typeof dl.resume === "function") {
-							dl.resume();
-							resumedAny = true;
-						}
-					} catch (e) {
-						console.warn("dl.resume error:", e.message);
+		let resumedAny = false;
+		if (downloader._downloads && downloader._downloads.length) {
+			downloader._downloads.forEach((dl) => {
+				try {
+					if (dl && typeof dl.resume === "function") {
+						dl.resume();
+						resumedAny = true;
 					}
-				});
-			}
-
-			if (!resumedAny) {
-				const startFn = $course.data("startDownloadFn");
-				if (typeof startFn === "function") {
-					startFn();
+				} catch (e) {
+					console.warn("dl.resume error:", e.message);
 				}
-			}
-
-			$pauseButton.removeClass("disabled");
-			$resumeButton.addClass("disabled");
-			$course.find(".download-status .label").html(translate("Downloading..."));
-			$course.find(".download-status").show();
+			});
 		}
+
+		if (!resumedAny) {
+			const startFn = $course.data("startDownloadFn");
+			if (typeof startFn === "function") {
+				startFn();
+			}
+		}
+
+		$pauseButton.removeClass("disabled");
+		$resumeButton.addClass("disabled");
+		$course.find(".download-status .label").html(translate("Downloading..."));
+		$course.find(".download-status").show();
 
 		processDownloadQueue();
 		sortDownloads();
