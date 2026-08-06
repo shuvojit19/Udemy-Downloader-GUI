@@ -2006,9 +2006,9 @@ function startDownload($course, courseData, subTitle = "") {
 
 				// Set download options
 				dl.setOptions({
-					threadsCount: 5, // Default: 2, Set the total number of download threads
-					timeout: 5000, // Default: 5000, If no data is received, the download times out (milliseconds)
-					range: "0-100", // Default: 0-100, Control the part of file that needs to be downloaded.
+					threadsCount: 8, // Optimized: 8 parallel connections for max speed
+					timeout: 10000, // 10s timeout
+					range: "0-100",
 				});
 
 				dl.start();
@@ -2492,42 +2492,48 @@ function startDownload($course, courseData, subTitle = "") {
 							try {
 								$progressIndividual.progress("reset");
 
-								const CHUNK_SIZE = 100;
+								const BATCH_SIZE = 10;
 								let count = 0;
+								const segmentBuffers = [];
 
-								for (let i = 0; i < list.length; i += CHUNK_SIZE) {
-									const chunk = list.slice(i, i + CHUNK_SIZE);
-									const result = [];
+								for (let i = 0; i < list.length; i += BATCH_SIZE) {
+									const batchUrls = list.slice(i, i + BATCH_SIZE);
+									const startTime = performance.now();
 
-									for (const url of chunk) {
-										const startTime = performance.now();
-										const response = await getFile(url, true);
-										const endTime = performance.now();
-										const timeDiff = (endTime - startTime) / 1000.0;
+									const responses = await Promise.all(
+										batchUrls.map((url) => getFile(url, true).catch(() => null))
+									);
 
-										if (response) {
-											const chunkSize = response.byteLength;
-											const speedAndUnit = utils.getDownloadSpeed(chunkSize / (timeDiff || 0.001));
+									const endTime = performance.now();
+									const timeDiff = (endTime - startTime) / 1000.0;
 
-											$downloadSpeedValue.html(speedAndUnit.value);
-											$downloadSpeedUnit.html(speedAndUnit.unit);
-
-											result.push(response);
+									let batchBytes = 0;
+									responses.forEach((res) => {
+										if (res) {
+											batchBytes += res.byteLength;
+											segmentBuffers.push(res);
 											count++;
-										} else {
-											console.warn("Skipping empty segment URL:", url);
 										}
+									});
 
-										$progressIndividual.progress("set percent", parseInt((count / list.length) * 100));
+									if (timeDiff > 0 && batchBytes > 0) {
+										const speedAndUnit = utils.getDownloadSpeed(batchBytes / timeDiff);
+										$downloadSpeedValue.html(speedAndUnit.value);
+										$downloadSpeedUnit.html(speedAndUnit.unit);
 									}
 
-									if (result.length > 0) {
-										const blob = new Blob(result, { type: "application/octet-binary" });
-										try {
-											const data = Buffer.from(await blob.arrayBuffer());
-											fs.appendFileSync(seqName.fullPath, data);
-										} catch (bufferError) {
-											console.error("Error writing video segment buffer:", bufferError);
+									$progressIndividual.progress("set percent", parseInt((count / list.length) * 100));
+
+									if (segmentBuffers.length >= 40 || i + BATCH_SIZE >= list.length) {
+										if (segmentBuffers.length > 0) {
+											const blob = new Blob(segmentBuffers, { type: "application/octet-binary" });
+											try {
+												const data = Buffer.from(await blob.arrayBuffer());
+												fs.appendFileSync(seqName.fullPath, data);
+												segmentBuffers.length = 0;
+											} catch (bufferError) {
+												console.error("Error writing video segment buffer:", bufferError);
+											}
 										}
 									}
 								}
