@@ -231,6 +231,18 @@ ipcMain.handle("show-open-dialog", async (event, options) => {
 });
 
 /**
+ * IPC Handler: Show native OS save file dialog.
+ * Replaces: remote.dialog.showSaveDialog() in app.js
+ * Renderer calls: ipcRenderer.invoke("show-save-dialog", options)
+ * Returns: { canceled, filePath }
+ */
+ipcMain.handle("show-save-dialog", async (event, options) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showSaveDialog(win, options);
+    return result;
+});
+
+/**
  * IPC Listener: Show native OS error dialog box.
  * Replaces: remote.dialog.showErrorBox() in app.js showAlertError()
  * Renderer calls: ipcRenderer.send("show-error-box", { title, message })

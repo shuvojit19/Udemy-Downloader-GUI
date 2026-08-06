@@ -1383,8 +1383,7 @@ async function saveM3u($course) {
 		}
 
         console.log(courseData);
-        dialog
-		.showSaveDialog({
+        ipcRenderer.invoke("show-save-dialog", {
 			title: "Save M3U",
 			defaultPath: `${courseName}.m3u`,
 			filters: [{ name: "M3U File (*.m3u)", fileExtension: ["m3u"] }],
@@ -3031,8 +3030,7 @@ function appendLog(title, error, additionalDescription = "") {
 function saveLogFile() {
 	if (loggers.length == 0) return;
 
-	dialog
-		.showSaveDialog({
+	ipcRenderer.invoke("show-save-dialog", {
 			title: "Udeler Log",
 			defaultPath: "udeler_logger.txt",
 			filters: [{ name: "Text File (*.txt)", fileExtension: ["txt"] }],
