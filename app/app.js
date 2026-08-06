@@ -414,17 +414,28 @@ function loginWithAccessToken() {
 	});
 }
 
-let globalSequenceCounter = 1;
+function reindexDownloadQueue() {
+	const $downloadCourses = $(".ui.downloads.section .ui.courses.items .ui.course.item");
+	if (!$downloadCourses.length) return;
 
-function getNextSequenceNumber(existingSeq) {
-	if (existingSeq !== undefined && existingSeq !== null && Number(existingSeq) > 0) {
-		const seq = Number(existingSeq);
-		if (seq >= globalSequenceCounter) {
-			globalSequenceCounter = seq + 1;
+	$downloadCourses.each((index, el) => {
+		const $c = $(el);
+		const newSeq = index + 1;
+		$c.find('input[name="sequence-number"]').val(newSeq);
+		$c.data("sequenceNumber", newSeq);
+
+		const courseId = Number($c.attr("course-id"));
+		if (courseId && Settings.downloadHistory) {
+			const histItem = Settings.downloadHistory.find((x) => Number(x.id) === courseId);
+			if (histItem) histItem.sequenceNumber = newSeq;
 		}
-		return seq;
-	}
-	return globalSequenceCounter++;
+		if (courseId && Settings.downloadedCourses) {
+			const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseId);
+			if (savedItem) savedItem.sequenceNumber = newSeq;
+		}
+
+		updateCourseStatusTags($c);
+	});
 }
 
 function createCourseElement(courseCache, downloadSection = false) {
@@ -433,7 +444,7 @@ function createCourseElement(courseCache, downloadSection = false) {
 	courseCache.encryptedVideos = 0;
 	courseCache.pathDownloaded = "";
 	courseCache.name = courseCache.name || courseCache.title;
-	courseCache.sequenceNumber = getNextSequenceNumber(courseCache.sequenceNumber);
+	courseCache.sequenceNumber = downloadSection ? (Number(courseCache.sequenceNumber) || 0) : 0;
 
 	const history = Settings.downloadHistory.find((x) => Number(x.id) === Number(courseCache.id));
 	if (history) {
@@ -442,8 +453,8 @@ function createCourseElement(courseCache, downloadSection = false) {
 		courseCache.encryptedVideos = Math.max(courseCache.encryptedVideos, history.encryptedVideos);
 		courseCache.selectedSubtitle = history.selectedSubtitle ?? "";
 		courseCache.pathDownloaded = history.pathDownloaded ?? "";
-		if (history.sequenceNumber && !courseCache.sequenceNumber) {
-			courseCache.sequenceNumber = getNextSequenceNumber(history.sequenceNumber);
+		if (history.sequenceNumber && downloadSection && !courseCache.sequenceNumber) {
+			courseCache.sequenceNumber = Number(history.sequenceNumber) || 0;
 		}
 	}
 
@@ -1196,6 +1207,7 @@ function saveDownloads(shouldQuitApp = false) {
 		}
 
 		const downloadedCourses = [];
+		reindexDownloadQueue();
 		const downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item");
 
 		if (!isDownloadsLoaded && !downloads.length) {
@@ -1379,8 +1391,10 @@ async function renderDownloads() {
 			.then(() => {
 				isDownloadsLoaded = true;
 				ui.busyLoadDownloads(false);
+				reindexDownloadQueue();
 				processDownloadQueue();
 				sortDownloads();
+				saveDownloads(false);
 			})
 			.catch((e) => {
 				console.trace("Error adding courses:", e);
