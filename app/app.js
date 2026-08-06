@@ -1786,14 +1786,12 @@ async function downloadMissingFiles($course) {
 	ui.showProgress($course, true);
 
 	try {
-		$course.find(".status-text-label").html(translate("Fetching fresh download links..."));
-		const courseData = await fetchCourseContent(courseId, courseName, courseUrl);
+		const courseData = $course.data("courseData");
 		if (!courseData) {
-			$course.find(".status-text-label").html(translate("Failed to fetch course details."));
+			$course.find(".status-text-label").html(translate("Failed to find course details in memory. Try starting the download normally first."));
 			ui.showProgress($course, false);
 			return;
 		}
-		$course.data("courseData", courseData);
 
 		const sanitizedCourseName = sanitize(courseData.name.trim());
 		const downloadDirectory = Settings.downloadDirectory();
@@ -2152,7 +2150,7 @@ function startDownload($course, courseData, subTitle = "") {
 		}
 	}
 
-	function downloadLecture(chapterIndex, lectureIndex, countLectures, sanitizedChapterName) {
+	async function downloadLecture(chapterIndex, lectureIndex, countLectures, sanitizedChapterName) {
 		try {
 			if (downloaded == toDownload) {
 				resetCourse($course, $course.find(".download-success"));
@@ -2647,6 +2645,27 @@ function startDownload($course, courseData, subTitle = "") {
 				const skipLecture = Settings.download.type == Settings.DownloadType.OnlyAttachments;
 				const isFileComplete = fs.existsSync(seqName.fullPath) && fs.statSync(seqName.fullPath).size > 0;
 
+				// Refresh stream URL just in time to avoid expired CDN links
+				if (!isFileComplete && !skipLecture && !lectureData.isEncrypted && (lectureType === "application/x-mpegurl" || (lectureType || "").includes("video"))) {
+					try {
+						const courseId = $course.attr("course-id");
+						if (courseId && udemyService) {
+							const freshLecture = await udemyService.fetchLecture(courseId, lectureData.id, true, true);
+							if (freshLecture) {
+								await udemyService._prepareStreamSource(courseId, freshLecture);
+								if (freshLecture.asset?.streams?.Video?.[0]?.src) {
+									lectureData.src = freshLecture.asset.streams.Video[0].src;
+								} else if (freshLecture.asset?.media_sources?.[0]?.src) {
+									lectureData.src = freshLecture.asset.media_sources[0].src;
+								}
+								lectureData.isEncrypted = Boolean(freshLecture.asset?.media_license_token);
+							}
+						}
+					} catch (err) {
+						appendLog("JIT URL Refresh Failed", `Lecture: ${lectureName}\nError: ${err.message}`);
+					}
+				}
+
 				if (lectureType !== "application/x-mpegurl") {
 					if (isFileComplete || skipLecture || lectureData.isEncrypted || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
 						if (!lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.startsWith("http")) {
@@ -2731,6 +2750,13 @@ function startDownload($course, courseData, subTitle = "") {
 								}
 							} catch (error) {
 								console.error("Error processing m3u8 stream:", error);
+								try {
+									if (fs.existsSync(seqName.fullPath)) {
+										fs.unlinkSync(seqName.fullPath);
+									}
+								} catch (e) {}
+								resetCourse($course, $course.find(".download-error"), Settings.download.autoRetry, courseData);
+								return; // Abort this download so endDownloadAttachment() is not called
 							}
 						}
 
