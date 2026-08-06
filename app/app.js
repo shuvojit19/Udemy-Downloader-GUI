@@ -2,8 +2,9 @@
 
 process.noDeprecation = true;
 
-const { shell, remote, ipcRenderer } = require("electron");
-const { dialog, BrowserWindow } = remote;
+// PHASE 1: Removed `remote` import — all remote.dialog, remote.BrowserWindow,
+// and remote.session usage is now handled via IPC handlers in main.js
+const { shell, ipcRenderer } = require("electron");
 const axios = require("axios");
 const fs = require("fs");
 
@@ -271,17 +272,19 @@ function saveSettings(formElement) {
 	showAlert(translate("Settings Saved"));
 }
 
-function selectDownloadPath() {
-	const path = dialog.showOpenDialogSync({
+// PHASE 1: selectDownloadPath() — Replaced remote.dialog.showOpenDialogSync()
+// with async IPC invoke to main process handler "show-open-dialog"
+async function selectDownloadPath() {
+	const paths = await ipcRenderer.invoke("show-open-dialog", {
 		properties: ["openDirectory"],
 	});
 
-	if (path && path[0]) {
-		fs.access(path[0], fs.constants.R_OK && fs.constants.W_OK, function (err) {
+	if (paths && paths[0]) {
+		fs.access(paths[0], fs.constants.R_OK && fs.constants.W_OK, function (err) {
 			if (err) {
 				showAlert(translate("Cannot select this folder"));
 			} else {
-				$settingsForm.find('input[name="downloadpath"]').val(path[0]);
+				$settingsForm.find('input[name="downloadpath"]').val(paths[0]);
 			}
 		});
 	}
@@ -353,7 +356,10 @@ async function checkLogin(alertExpired = true) {
 	}
 }
 
-function loginWithUdemy() {
+// PHASE 1: loginWithUdemy() — Replaced remote.BrowserWindow + remote.session
+// with a single IPC call. The main process now handles the entire login flow:
+// creating the popup, intercepting the auth token, and returning it here.
+async function loginWithUdemy() {
 	const $formLogin = $(".ui.login .form");
 
 	if ($formLogin.find('input[name="business"]').is(":checked")) {
@@ -365,41 +371,16 @@ function loginWithUdemy() {
 		ui.$subdomainField.val(null);
 	}
 
-	const parent = remote.getCurrentWindow();
-	const dimensions = parent.getSize();
-	const session = remote.session;
-	let udemyLoginWindow = new BrowserWindow({
-		width: dimensions[0] - 100,
-		height: dimensions[1] - 100,
-		parent,
-		modal: true,
-	});
+	const subdomain = ui.$subdomainField.val() || "www";
+	Settings.subDomain = subdomain;
 
-	session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ["*://*.udemy.com/*"] }, function (request, callback) {
-		const token = request.requestHeaders.Authorization
-			? request.requestHeaders.Authorization.split(" ")[1]
-			: cookie.parse(request.requestHeaders.Cookie || "").access_token;
-
-		if (token) {
-			Settings.accessToken = token;
-			Settings.subDomain = new URL(request.url).hostname.split(".")[0];
-
-			udemyLoginWindow.destroy();
-			session.defaultSession.clearStorageData();
-			session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ["*://*.udemy.com/*"] }, function (request, callback) {
-				callback({ requestHeaders: request.requestHeaders });
-			});
-			checkLogin();
-		}
-		callback({ requestHeaders: request.requestHeaders });
-	});
-
-	Settings.subDomain = ui.$subdomainField.val() ?? "www";
-
-	if (ui.$subdomainField.val()) {
-		udemyLoginWindow.loadURL(`https://${Settings.subDomain}.udemy.com`);
-	} else {
-		udemyLoginWindow.loadURL("https://www.udemy.com/join/login-popup");
+	// IPC bridge: main process opens the login window, intercepts the token,
+	// and returns { token, subdomain } or null if the user cancelled.
+	const result = await ipcRenderer.invoke("open-login-window", { subdomain });
+	if (result) {
+		Settings.accessToken = result.token;
+		Settings.subDomain = result.subdomain;
+		checkLogin();
 	}
 }
 
@@ -3146,9 +3127,11 @@ function handleApiError(error, errorName, courseName = null, triggerThrow = true
 	}
 }
 
+// PHASE 1: showAlertError() — Replaced remote.dialog.showErrorBox()
+// with IPC send to main process handler
 function showAlertError(message, title = "") {
 	title = title ? `.:: ${title} ::.` : ".:: Error ::.";
-	dialog.showErrorBox(title, message);
+	ipcRenderer.send("show-error-box", { title, message });
 }
 
 function showAlert(message, title = "") {

@@ -1,6 +1,8 @@
 process.noDeprecation = true;
 
-const { app, BrowserWindow, Menu, ipcMain, screen, shell } = require("electron");
+// PHASE 1: Added dialog and session imports — these were previously accessed
+// via the deprecated `remote` module from the renderer process.
+const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog, session } = require("electron");
 const { join } = require("path");
 
 require("./environments.js");
@@ -45,8 +47,8 @@ function createWindow() {
         maximizable: true,
         webPreferences: {
             nodeIntegration: true,
-            enableRemoteModule: true,
-            contextIsolation: false,
+            enableRemoteModule: false, // PHASE 1: Disabled — replaced with IPC handlers below
+            contextIsolation: false,   // TODO Phase 2: Enable once all Node APIs are bridged
             preload: "./preload.js"
         }
     });
@@ -202,6 +204,108 @@ app.on("window-all-closed", () => {
 
 ipcMain.on("quitApp", function () {
     app.quit();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 1: IPC HANDLERS — Replacements for the deprecated `remote` module
+//
+// Previously, the renderer process used `remote.dialog`, `remote.BrowserWindow`,
+// and `remote.session` to directly access main-process APIs. This is a critical
+// security vulnerability because it gives the renderer synchronous, unrestricted
+// access to the entire main process.
+//
+// These IPC handlers provide the same functionality through a controlled,
+// asynchronous message-passing interface.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * IPC Handler: Show native OS folder picker dialog.
+ * Replaces: remote.dialog.showOpenDialogSync() in app.js selectDownloadPath()
+ * Renderer calls: ipcRenderer.invoke("show-open-dialog", { properties: ["openDirectory"] })
+ * Returns: Array of selected file paths (or empty array if cancelled)
+ */
+ipcMain.handle("show-open-dialog", async (event, options) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(win, options);
+    return result.filePaths;
+});
+
+/**
+ * IPC Listener: Show native OS error dialog box.
+ * Replaces: remote.dialog.showErrorBox() in app.js showAlertError()
+ * Renderer calls: ipcRenderer.send("show-error-box", { title, message })
+ * Note: Uses .on() not .handle() because no return value is needed.
+ */
+ipcMain.on("show-error-box", (_event, { title, message }) => {
+    dialog.showErrorBox(title, message);
+});
+
+/**
+ * IPC Handler: Open Udemy login popup window and capture auth token.
+ * Replaces: remote.BrowserWindow + remote.session in app.js loginWithUdemy()
+ *
+ * This handler performs the entire login flow in the main process:
+ * 1. Creates a modal BrowserWindow pointing to Udemy's login page
+ * 2. Intercepts all HTTP requests to *.udemy.com via session.webRequest
+ * 3. Extracts the access token from the Authorization header or cookie
+ * 4. Destroys the login window and clears session storage
+ * 5. Returns { token, subdomain } to the renderer process
+ *
+ * If the user closes the window without logging in, returns null.
+ *
+ * Renderer calls: ipcRenderer.invoke("open-login-window", { subdomain })
+ * Returns: { token: string, subdomain: string } | null
+ */
+ipcMain.handle("open-login-window", async (event, { subdomain }) => {
+    const cookie = require("cookie");
+    const parentWin = BrowserWindow.fromWebContents(event.sender);
+    const parentSize = parentWin.getSize();
+
+    return new Promise((resolve) => {
+        const loginWindow = new BrowserWindow({
+            width: parentSize[0] - 100,
+            height: parentSize[1] - 100,
+            parent: parentWin,
+            modal: true,
+        });
+
+        // Intercept all requests to udemy.com to capture the auth token
+        session.defaultSession.webRequest.onBeforeSendHeaders(
+            { urls: ["*://*.udemy.com/*"] },
+            (request, callback) => {
+                // Token can be in the Authorization header or in a cookie
+                const token = request.requestHeaders.Authorization
+                    ? request.requestHeaders.Authorization.split(" ")[1]
+                    : cookie.parse(request.requestHeaders.Cookie || "").access_token;
+
+                if (token) {
+                    const detectedSubdomain = new URL(request.url).hostname.split(".")[0];
+
+                    // Clean up: destroy window, clear storage, reset interceptor
+                    loginWindow.destroy();
+                    session.defaultSession.clearStorageData();
+                    session.defaultSession.webRequest.onBeforeSendHeaders(
+                        { urls: ["*://*.udemy.com/*"] },
+                        (req, cb) => cb({ requestHeaders: req.requestHeaders })
+                    );
+
+                    resolve({ token, subdomain: detectedSubdomain });
+                }
+                callback({ requestHeaders: request.requestHeaders });
+            }
+        );
+
+        // Load the appropriate Udemy login URL
+        const loginUrl = subdomain && subdomain !== "www"
+            ? `https://${subdomain}.udemy.com`
+            : "https://www.udemy.com/join/login-popup";
+        loginWindow.loadURL(loginUrl);
+
+        // Handle user closing the window without logging in
+        loginWindow.on("closed", () => {
+            resolve(null);
+        });
+    });
 });
 
 
