@@ -409,12 +409,26 @@ function loginWithAccessToken() {
 	});
 }
 
+let globalSequenceCounter = 1;
+
+function getNextSequenceNumber(existingSeq) {
+	if (existingSeq !== undefined && existingSeq !== null && Number(existingSeq) > 0) {
+		const seq = Number(existingSeq);
+		if (seq >= globalSequenceCounter) {
+			globalSequenceCounter = seq + 1;
+		}
+		return seq;
+	}
+	return globalSequenceCounter++;
+}
+
 function createCourseElement(courseCache, downloadSection = false) {
 	courseCache.completed = courseCache.completed || false;
 	courseCache.infoDownloaded = "";
 	courseCache.encryptedVideos = 0;
 	courseCache.pathDownloaded = "";
 	courseCache.name = courseCache.name || courseCache.title;
+	courseCache.sequenceNumber = getNextSequenceNumber(courseCache.sequenceNumber);
 
 	const history = Settings.downloadHistory.find((x) => Number(x.id) === Number(courseCache.id));
 	if (history) {
@@ -423,6 +437,9 @@ function createCourseElement(courseCache, downloadSection = false) {
 		courseCache.encryptedVideos = Math.max(courseCache.encryptedVideos, history.encryptedVideos);
 		courseCache.selectedSubtitle = history.selectedSubtitle ?? "";
 		courseCache.pathDownloaded = history.pathDownloaded ?? "";
+		if (history.sequenceNumber && !courseCache.sequenceNumber) {
+			courseCache.sequenceNumber = getNextSequenceNumber(history.sequenceNumber);
+		}
 	}
 
 	// Se o caminho não existir, obtenha o caminho de configurações de download para o título do curso
@@ -435,6 +452,7 @@ function createCourseElement(courseCache, downloadSection = false) {
             <input type="hidden" name="encryptedvideos" value="${courseCache.encryptedVideos}">
             <input type="hidden" name="selectedSubtitle" value="${courseCache.selectedSubtitle}">
             <input type="hidden" name="path-downloaded" value="${courseCache.pathDownloaded}">
+            <input type="hidden" name="sequence-number" value="${courseCache.sequenceNumber}">
 
             <div class="ui tiny label download-quality grey"></div>
             <div class="ui tiny black label download-speed">
@@ -487,6 +505,8 @@ function createCourseElement(courseCache, downloadSection = false) {
                 <!-- <div style="margin-top:15px"><span class="lecture-name"></span></div> -->
             </div>
         </div>`);
+
+	$course.data("sequenceNumber", courseCache.sequenceNumber);
 
 	if (!downloadSection) {
 		if (courseCache.completed) {
@@ -586,7 +606,9 @@ function sortDownloads() {
 			return pA - pB;
 		}
 
-		return 0;
+		const seqA = Number($(a).find('input[name="sequence-number"]').val() || $(a).data("sequenceNumber") || 0);
+		const seqB = Number($(b).find('input[name="sequence-number"]').val() || $(b).data("sequenceNumber") || 0);
+		return seqA - seqB;
 	});
 
 	$.each($items, (_index, element) => {
@@ -617,6 +639,13 @@ function processDownloadQueue() {
 			$item.data("isQueued", true);
 			pendingItems.push($item);
 		}
+	});
+
+	// Sort pending queued items by sequenceNumber ascending (FIFO order: lowest sequence number first)
+	pendingItems.sort((a, b) => {
+		const seqA = Number($(a).find('input[name="sequence-number"]').val() || $(a).data("sequenceNumber") || 0);
+		const seqB = Number($(b).find('input[name="sequence-number"]').val() || $(b).data("sequenceNumber") || 0);
+		return seqA - seqB;
 	});
 
 	console.log(`[processDownloadQueue] Active downloads: ${activeCount}/${maxConcurrent}, Pending queued: ${pendingItems.length}`);
@@ -1030,13 +1059,14 @@ function toggleSubscriber() {
 	search("");
 }
 
-function addDownloadHistory(courseId, courseName, completed = false, encryptedVideos = 0, selectedSubtitle = "", pathDownloaded = "") {
+function addDownloadHistory(courseId, courseName, completed = false, encryptedVideos = 0, selectedSubtitle = "", pathDownloaded = "", sequenceNumber = 0) {
 	courseId = Number(courseId);
 	courseName = String(courseName) || "";
 	completed = Boolean(completed);
 	encryptedVideos = Number(encryptedVideos);
 	selectedSubtitle = String(selectedSubtitle) || "";
 	pathDownloaded = String(pathDownloaded) || "";
+	sequenceNumber = Number(sequenceNumber) || 0;
 
 	const items = Settings.downloadHistory;
 	const index = items.findIndex((x) => Number(x.id) === courseId);
@@ -1052,6 +1082,9 @@ function addDownloadHistory(courseId, courseName, completed = false, encryptedVi
 		item.encryptedVideos = encryptedVideos;
 		item.selectedSubtitle = selectedSubtitle;
 		item.pathDownloaded = pathDownloaded;
+		if (sequenceNumber && !item.sequenceNumber) {
+			item.sequenceNumber = sequenceNumber;
+		}
 	} else {
 		items.push({
 			id: courseId,
@@ -1061,6 +1094,7 @@ function addDownloadHistory(courseId, courseName, completed = false, encryptedVi
 			encryptedVideos,
 			selectedSubtitle,
 			pathDownloaded,
+			sequenceNumber,
 		});
 	}
 
@@ -1109,6 +1143,7 @@ function saveDownloads(shouldQuitApp = false) {
 			const individualProgress = hasProgress ? getProgress($el.find(".download-status .individual.progress")) : 0;
 			const combinedProgress = hasProgress ? getProgress($el.find(".download-status .combined.progress")) : 0;
 			const isCompleted = $el.attr("course-completed") === "true";
+			const sequenceNumber = Number($el.find('input[name="sequence-number"]').val() || $el.data("sequenceNumber") || 0);
 
 			const courseData = {
 				id: courseId,
@@ -1123,6 +1158,7 @@ function saveDownloads(shouldQuitApp = false) {
 				encryptedVideos: Number($el.find('input[name="encryptedvideos"]').val() || 0),
 				selectedSubtitle: $el.find('input[name="selectedSubtitle"]').val() || "",
 				pathDownloaded: $el.find('input[name="path-downloaded"]').val() || "",
+				sequenceNumber: sequenceNumber,
 			};
 
 			downloadedCourses.push(courseData);
@@ -1132,7 +1168,8 @@ function saveDownloads(shouldQuitApp = false) {
 				courseData.completed,
 				courseData.encryptedVideos,
 				courseData.selectedSubtitle,
-				courseData.pathDownloaded
+				courseData.pathDownloaded,
+				courseData.sequenceNumber
 			);
 		});
 
@@ -1304,6 +1341,7 @@ async function prepareDownloading($course, subtitle) {
 			individualProgress: 0,
 			combinedProgress: 0,
 			progressStatus: translate("Fetching course details..."),
+			sequenceNumber: Number($course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || 0),
 		};
 		$downloadItem = createCourseElement(courseObj, true);
 		$downloads.prepend($downloadItem);
