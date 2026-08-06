@@ -72,11 +72,11 @@ body .dialog-widget.background {
   position: relative;
 }
 
-.ui.dashboard .courses .course .message {
+.ui.dashboard .courses .course .message, .ui.dashboard .downloads .course .message {
   display: none;
 }
 
-.ui.dashboard .courses .course .message:hover {
+.ui.dashboard .courses .course .message:hover, .ui.dashboard .downloads .course .message:hover {
   cursor: pointer;
 }
 

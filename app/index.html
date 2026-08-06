@@ -12,6 +12,14 @@
   <link rel="stylesheet" href="./assets/semantic-ui/css/semantic.min.css" />
   <link rel="stylesheet" href="./css/style.css" />
 
+  <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+      require('fs').appendFileSync('renderer_crash.log', `${message} at ${source}:${lineno}:${colno}\n${error ? error.stack : ''}\n`);
+    };
+    window.addEventListener('unhandledrejection', function(event) {
+      require('fs').appendFileSync('renderer_crash.log', `Unhandled Promise Rejection: ${event.reason}\n`);
+    });
+  </script>
   <script src="./renderer.js"></script>
 </head>
 

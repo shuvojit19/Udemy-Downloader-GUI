@@ -59,9 +59,7 @@ function createWindow() {
     //   win.setTitle(`Udeler | Udemy Course Downloader - v${appVersion}`);
     // });
 
-    // Open the DevTools.
-    if (isDebug) {
-        win.openDevTools(); //{ mode: 'detach' });
+	if (isDebug) {
         win.maximize();
     }
 
@@ -240,6 +238,17 @@ ipcMain.handle("show-save-dialog", async (event, options) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showSaveDialog(win, options);
     return result;
+});
+
+/**
+ * IPC Sync Handlers: Polyfill for third-party libraries (Sentry, electron-settings)
+ * that still depend on `electron.remote.app`. These will be removed in Step 2/3.
+ */
+ipcMain.on("get-path-sync", (event, name) => {
+    event.returnValue = app.getPath(name);
+});
+ipcMain.on("get-app-name-sync", (event) => {
+    event.returnValue = app.name || app.getName();
 });
 
 /**

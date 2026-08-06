@@ -1,5 +1,19 @@
 "use strict";
 
+// PHASE 1 POLYFILL: Several third-party libraries (Sentry, electron-settings)
+// still depend on `electron.remote.app` during their initialization.
+// Since we set `enableRemoteModule: false` in main.js, this polyfill provides
+// the exact properties they need via synchronous IPC to prevent renderer crashes.
+// This will be removed in Step 2 when dependencies are upgraded.
+const _electron = require("electron");
+_electron.remote = {
+	app: {
+		getPath: (name) => _electron.ipcRenderer.sendSync("get-path-sync", name),
+		name: _electron.ipcRenderer.sendSync("get-app-name-sync"),
+		getName: () => _electron.ipcRenderer.sendSync("get-app-name-sync"),
+	}
+};
+
 const Sentry = require("@sentry/electron");
 const Gettings = require("./helpers/settings.js");
 const { version: appVersion, vars: pkgVars } = require("../package.json");
