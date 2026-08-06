@@ -123,9 +123,12 @@ const utils = {
 		const BYTES_PER_KB = 1024;
 		const UNITS = ["B/s", "KB/s", "MB/s", "GB/s"];
 
-		let speed = bytes;
-		let unitIndex = 0;
+		let speed = bytes || 0;
+		if (speed <= 0 || isNaN(speed)) {
+			return { value: 0, unit: "KB/s" };
+		}
 
+		let unitIndex = 0;
 		if (speed >= BYTES_PER_KB) {
 			unitIndex = speed >= BYTES_PER_KB ** 3 ? 3 : speed >= BYTES_PER_KB ** 2 ? 2 : 1;
 			speed /= BYTES_PER_KB ** unitIndex;

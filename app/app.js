@@ -1371,9 +1371,13 @@ async function prepareDownloading($course, subtitle) {
 
 	let courseData = $downloadItem.data("courseData");
 	try {
-		// ALWAYS FETCH COURSE DETAILS IMMEDIATELY ON ADDITION IF NOT ALREADY FETCHED
-		if (!courseData) {
-			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
+		// ALWAYS FETCH FRESH COURSE DETAILS IF NOT PRESENT OR IF URLS MAY BE EXPIRED (>30 mins old)
+		if (!courseData || !courseData.fetchedAt || (Date.now() - courseData.fetchedAt > 1800000)) {
+			const freshData = await fetchCourseContent(courseId, courseName, courseUrl);
+			if (freshData) {
+				freshData.fetchedAt = Date.now();
+				courseData = freshData;
+			}
 			if (!courseData) {
 				$course.data("isPreparing", false);
 				$downloadItem.data("isPreparing", false);
@@ -1870,6 +1874,7 @@ function startDownload($course, courseData, subTitle = "") {
 								return;
 							}
 							$downloadSpeedValue.html(0);
+							$downloadSpeedUnit.html("KB/s");
 							break;
 
 						case 1:
@@ -1923,6 +1928,7 @@ function startDownload($course, courseData, subTitle = "") {
 							break;
 						default:
 							$downloadSpeedValue.html(0);
+							$downloadSpeedUnit.html("KB/s");
 					}
 				}, 1000);
 
