@@ -383,6 +383,15 @@
                   </div>
 
                   <div class="ui horizontal divider"></div>
+                  
+                  <div class="ui message info" style="text-align: center;">
+                    <p>${translate("Got messy sequence numbers? Click below to realign them cleanly from 1 to N.")}</p>
+                    <button type="button" class="ui button teal" onclick="window.realignSequences.run()">
+                      <i class="sort numeric down icon"></i> ${translate("Realign Sequences")}
+                    </button>
+                  </div>
+
+                  <div class="ui horizontal divider"></div>
                   <button class="floating-btn" type="submit" title="${translate("Save Settings")}">
                     <i class="save outline icon"></i>
                   </button>

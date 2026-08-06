@@ -31,6 +31,9 @@ const loggers = [];
 let repoAccount = "heliomarpm";
 let udemyService;
 
+// Attach SequenceMigrator to window so index.html UI can call it
+window.realignSequences = require('./helpers/SequenceMigrator');
+
 ipcRenderer.on("saveDownloads", () => saveDownloads(true));
 
 // external browser
