@@ -1546,7 +1546,7 @@ async function verifyCourseDownloads($course) {
 	$course.find(".download-error").hide();
 	$course.find(".course-encrypted").hide();
 
-	$course.find(".download-status .label").html(translate("Verifying course files..."));
+	$course.find(".status-text-label").html(translate("Verifying course files..."));
 	$course.find(".download-status").show();
 	ui.showProgress($course, true);
 
@@ -1555,7 +1555,7 @@ async function verifyCourseDownloads($course) {
 		if (!courseData) {
 			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
 			if (!courseData) {
-				$course.find(".download-status .label").html(translate("Failed to fetch course details for verification."));
+				$course.find(".status-text-label").html(translate("Failed to fetch course details for verification."));
 				ui.showProgress($course, false);
 				return;
 			}
@@ -1661,12 +1661,13 @@ async function verifyCourseDownloads($course) {
 		appendLog(`Course Verification [Seq #${seqNum}]`, message);
 
 		if (isComplete) {
-			$course.attr("course-completed", true);
+			$course.attr("course-completed", "true");
+			$course.data("completed", true);
 			$course.find(".download-success").show();
 			saveDownloads(false);
-		} else {
-			$course.attr("course-completed", "");
 		}
+
+		updateCourseStatusTags($course);
 		$course.find(".download-status").show();
 	} catch (error) {
 		ui.showProgress($course, false);
