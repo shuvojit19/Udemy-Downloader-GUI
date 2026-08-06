@@ -414,27 +414,69 @@ function loginWithAccessToken() {
 	});
 }
 
-function reindexDownloadQueue() {
+function getNextPermanentSequenceNumber() {
+	let maxSeq = 0;
+	$(".ui.downloads.section .ui.course.item").each((_i, el) => {
+		const s = Number($(el).find('input[name="sequence-number"]').val() || $(el).data("sequenceNumber") || 0);
+		if (s > maxSeq) maxSeq = s;
+	});
+	if (Array.isArray(Settings.downloadedCourses)) {
+		Settings.downloadedCourses.forEach((c) => {
+			const s = Number(c.sequenceNumber || 0);
+			if (s > maxSeq) maxSeq = s;
+		});
+	}
+	if (Array.isArray(Settings.downloadHistory)) {
+		Settings.downloadHistory.forEach((h) => {
+			const s = Number(h.sequenceNumber || 0);
+			if (s > maxSeq) maxSeq = s;
+		});
+	}
+	return maxSeq + 1;
+}
+
+function assignSequenceNumberToCourse($course) {
+	if (!$course || !$course.length) return 0;
+	let currentSeq = Number($course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || 0);
+
+	const courseId = Number($course.attr("course-id"));
+	if (!currentSeq && courseId) {
+		if (Array.isArray(Settings.downloadHistory)) {
+			const histItem = Settings.downloadHistory.find((x) => Number(x.id) === courseId);
+			if (histItem && histItem.sequenceNumber) currentSeq = Number(histItem.sequenceNumber);
+		}
+		if (!currentSeq && Array.isArray(Settings.downloadedCourses)) {
+			const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseId);
+			if (savedItem && savedItem.sequenceNumber) currentSeq = Number(savedItem.sequenceNumber);
+		}
+	}
+
+	if (!currentSeq) {
+		currentSeq = getNextPermanentSequenceNumber();
+	}
+
+	$course.find('input[name="sequence-number"]').val(currentSeq);
+	$course.data("sequenceNumber", currentSeq);
+
+	if (courseId && Settings.downloadHistory) {
+		const histItem = Settings.downloadHistory.find((x) => Number(x.id) === courseId);
+		if (histItem) histItem.sequenceNumber = currentSeq;
+	}
+	if (courseId && Settings.downloadedCourses) {
+		const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseId);
+		if (savedItem) savedItem.sequenceNumber = currentSeq;
+	}
+
+	updateCourseStatusTags($course);
+	return currentSeq;
+}
+
+function ensureSequenceNumbersAssigned() {
 	const $downloadCourses = $(".ui.downloads.section .ui.courses.items .ui.course.item");
 	if (!$downloadCourses.length) return;
 
-	$downloadCourses.each((index, el) => {
-		const $c = $(el);
-		const newSeq = index + 1;
-		$c.find('input[name="sequence-number"]').val(newSeq);
-		$c.data("sequenceNumber", newSeq);
-
-		const courseId = Number($c.attr("course-id"));
-		if (courseId && Settings.downloadHistory) {
-			const histItem = Settings.downloadHistory.find((x) => Number(x.id) === courseId);
-			if (histItem) histItem.sequenceNumber = newSeq;
-		}
-		if (courseId && Settings.downloadedCourses) {
-			const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseId);
-			if (savedItem) savedItem.sequenceNumber = newSeq;
-		}
-
-		updateCourseStatusTags($c);
+	$downloadCourses.each((_index, el) => {
+		assignSequenceNumberToCourse($(el));
 	});
 }
 
@@ -1207,7 +1249,7 @@ function saveDownloads(shouldQuitApp = false) {
 		}
 
 		const downloadedCourses = [];
-		reindexDownloadQueue();
+		ensureSequenceNumbersAssigned();
 		const downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item");
 
 		if (!isDownloadsLoaded && !downloads.length) {
@@ -1391,7 +1433,7 @@ async function renderDownloads() {
 			.then(() => {
 				isDownloadsLoaded = true;
 				ui.busyLoadDownloads(false);
-				reindexDownloadQueue();
+				ensureSequenceNumbersAssigned();
 				processDownloadQueue();
 				sortDownloads();
 				saveDownloads(false);
@@ -1435,7 +1477,8 @@ async function prepareDownloading($course, subtitle) {
 			sequenceNumber: Number($course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || 0),
 		};
 		$downloadItem = createCourseElement(courseObj, true);
-		$downloads.prepend($downloadItem);
+		assignSequenceNumberToCourse($downloadItem);
+		$downloads.append($downloadItem);
 	}
 
 	$course.data("isPreparing", true);
