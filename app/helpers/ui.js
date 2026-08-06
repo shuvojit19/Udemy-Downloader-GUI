@@ -84,7 +84,7 @@ const ui = {
                 <button class="ui basic teal open-dir button" title="Open Downloads Directory"><i class="folder open icon"></i></button>
                 <button class="ui basic purple verify button" title="Verify Course Files"><i class="shield check icon"></i></button>
                 <button class="ui basic orange check-drm button" title="Check DRM & Encryption Status"><i class="lock icon"></i></button>
-                <button class="ui basic red download-missing button" title="Download Missing Files Immediately"><i class="sync icon"></i></button>
+                <button class="ui basic red download-missing button" title="Download Missing Files Immediately"><i class="download icon"></i></button>
             </div>
             <div class="course-status-tags" style="margin-top: 8px; margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;"></div>
             <div class="ui horizontal divider" style="margin: 6px 0;"></div>

@@ -510,6 +510,11 @@ function createCourseElement(courseCache, downloadSection = false) {
 		if (history.sequenceNumber && downloadSection && !courseCache.sequenceNumber) {
 			courseCache.sequenceNumber = Number(history.sequenceNumber) || 0;
 		}
+		courseCache.verifiedStatus = courseCache.verifiedStatus || history.verifiedStatus || "";
+		courseCache.verifiedDetails = courseCache.verifiedDetails || history.verifiedDetails || "";
+		courseCache.drmStatus = courseCache.drmStatus || history.drmStatus || "";
+		courseCache.drmDetails = courseCache.drmDetails || history.drmDetails || "";
+		courseCache.historyDate = history.date || "";
 	}
 
 	// Se o caminho não existir, obtenha o caminho de configurações de download para o título do curso
@@ -593,6 +598,12 @@ function createCourseElement(courseCache, downloadSection = false) {
 			$course.find(".status-text-label").html(courseCache.progressStatus);
 		}
 	}
+
+	if (courseCache.verifiedStatus) $course.data("verifiedStatus", courseCache.verifiedStatus);
+	if (courseCache.verifiedDetails) $course.data("verifiedDetails", courseCache.verifiedDetails);
+	if (courseCache.drmStatus) $course.data("drmStatus", courseCache.drmStatus);
+	if (courseCache.drmDetails) $course.data("drmDetails", courseCache.drmDetails);
+	if (courseCache.historyDate) $course.data("historyDate", courseCache.historyDate);
 
 	updateCourseStatusTags($course);
 
@@ -1201,22 +1212,23 @@ function toggleSubscriber() {
 	search("");
 }
 
-function addDownloadHistory(courseId, courseName, completed = false, encryptedVideos = 0, selectedSubtitle = "", pathDownloaded = "", sequenceNumber = 0) {
-	courseId = Number(courseId);
-	courseName = String(courseName) || "";
-	completed = Boolean(completed);
-	encryptedVideos = Number(encryptedVideos);
-	selectedSubtitle = String(selectedSubtitle) || "";
-	pathDownloaded = String(pathDownloaded) || "";
-	sequenceNumber = Number(sequenceNumber) || 0;
-
+function addDownloadHistory(
+	courseId,
+	courseName,
+	completed = false,
+	encryptedVideos = 0,
+	selectedSubtitle = "",
+	pathDownloaded = "",
+	sequenceNumber = 0,
+	verifiedStatus = "",
+	verifiedDetails = "",
+	drmStatus = "",
+	drmDetails = ""
+) {
 	const items = Settings.downloadHistory;
-	const index = items.findIndex((x) => Number(x.id) === courseId);
+	const item = items.find((x) => Number(x.id) === Number(courseId));
 
-	if (index !== -1) {
-		const item = items[index];
-		item.id = courseId;
-		item.name = courseName;
+	if (item) {
 		if (completed !== Boolean(item.completed)) {
 			item.completed = completed;
 			item.date = new Date(Date.now()).toLocaleDateString();
@@ -1227,6 +1239,10 @@ function addDownloadHistory(courseId, courseName, completed = false, encryptedVi
 		if (sequenceNumber && !item.sequenceNumber) {
 			item.sequenceNumber = sequenceNumber;
 		}
+		if (verifiedStatus !== undefined) item.verifiedStatus = verifiedStatus;
+		if (verifiedDetails !== undefined) item.verifiedDetails = verifiedDetails;
+		if (drmStatus !== undefined) item.drmStatus = drmStatus;
+		if (drmDetails !== undefined) item.drmDetails = drmDetails;
 	} else {
 		items.push({
 			id: courseId,
@@ -1237,6 +1253,10 @@ function addDownloadHistory(courseId, courseName, completed = false, encryptedVi
 			selectedSubtitle,
 			pathDownloaded,
 			sequenceNumber,
+			verifiedStatus: verifiedStatus || "",
+			verifiedDetails: verifiedDetails || "",
+			drmStatus: drmStatus || "",
+			drmDetails: drmDetails || "",
 		});
 	}
 
@@ -1297,11 +1317,15 @@ function saveDownloads(shouldQuitApp = false) {
 				individualProgress: Math.min(100, individualProgress),
 				combinedProgress: Math.min(100, combinedProgress),
 				completed: isCompleted,
-				progressStatus: $el.find(".download-status .label").text() || "",
+				progressStatus: $el.find(".status-text-label").text() || $el.find(".download-status .label").text() || "",
 				encryptedVideos: Number($el.find('input[name="encryptedvideos"]').val() || 0),
 				selectedSubtitle: $el.find('input[name="selectedSubtitle"]').val() || "",
 				pathDownloaded: $el.find('input[name="path-downloaded"]').val() || "",
 				sequenceNumber: sequenceNumber,
+				verifiedStatus: $el.data("verifiedStatus") || "",
+				verifiedDetails: $el.data("verifiedDetails") || "",
+				drmStatus: $el.data("drmStatus") || "",
+				drmDetails: $el.data("drmDetails") || "",
 			};
 
 			downloadedCourses.push(courseData);
@@ -1312,7 +1336,11 @@ function saveDownloads(shouldQuitApp = false) {
 				courseData.encryptedVideos,
 				courseData.selectedSubtitle,
 				courseData.pathDownloaded,
-				courseData.sequenceNumber
+				courseData.sequenceNumber,
+				courseData.verifiedStatus,
+				courseData.verifiedDetails,
+				courseData.drmStatus,
+				courseData.drmDetails
 			);
 		});
 
@@ -1723,6 +1751,7 @@ async function verifyCourseDownloads($course) {
 		}
 
 		updateCourseStatusTags($course);
+		saveDownloads(false);
 		$course.find(".download-status").show();
 	} catch (error) {
 		ui.showProgress($course, false);
@@ -1739,7 +1768,7 @@ async function checkDrmStatus($course) {
 
 	if (!courseId) return;
 
-	$course.find(".status-text-label").html(translate("Checking DRM & Encryption status..."));
+	$course.find(".status-text-label").html(translate("Checking DRM status..."));
 	$course.find(".download-status").show();
 	ui.showProgress($course, true);
 
@@ -1784,6 +1813,7 @@ async function checkDrmStatus($course) {
 			drmStatus: canDownloadEverything ? "free" : "protected",
 			drmDetails: canDownloadEverything ? "100% Downloadable" : `${drmEncryptedCount}/${totalLectures} encrypted`,
 		});
+		saveDownloads(false);
 
 		const statusMessage = `[Seq #${seqNum}] DRM Protection Status: ${courseName}
 - Total Lectures: ${totalLectures}
