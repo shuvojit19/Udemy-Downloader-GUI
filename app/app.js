@@ -552,25 +552,31 @@ function sortDownloads() {
 			const isCompleted = $item.attr("course-completed") === "true" || $item.find(".download-success").is(":visible");
 			const isError = $item.find(".download-error").is(":visible") || $item.find(".course-encrypted").is(":visible");
 			const isUserPaused = $item.data("isPaused") === true;
-			const isDownloadingOrQueued = ($item.data("isDownloading") === true || $item.data("isPreparing") === true || $item.data("isQueued") === true) && !isUserPaused && !isCompleted && !isError;
+			const isQueued = $item.data("isQueued") === true;
+			const isPreparing = $item.data("isPreparing") === true;
+			const isDownloading = $item.data("isDownloading") === true || ($item.find(".download-status").is(":visible") && $item.find(".pause.button").is(":visible") && !$item.find(".pause.button").hasClass("disabled"));
 
-			// Priority 1: Active ongoing downloads & queued (TOP)
-			if (isDownloadingOrQueued) {
-				return 1;
-			}
-			// Priority 2: User paused downloads (SECOND)
-			if (isUserPaused) {
-				return 2;
-			}
-			// Priority 3: Download errors (THIRD)
-			if (isError) {
-				return 3;
-			}
-			// Priority 4: Finished / Completed downloads (BOTTOM)
+			// Priority 5: Finished / Completed downloads (LAST)
 			if (isCompleted) {
+				return 5;
+			}
+			// Priority 4: Download errors
+			if (isError) {
 				return 4;
 			}
-			return 2;
+			// Priority 3: Getting information for downloads
+			if (isPreparing) {
+				return 3;
+			}
+			// Priority 2: User paused downloads & queued
+			if (isUserPaused || isQueued) {
+				return 2;
+			}
+			// Priority 1: Active ongoing downloads (TOP)
+			if (isDownloading) {
+				return 1;
+			}
+			return 1;
 		};
 
 		const pA = getCategoryPriority(a);
