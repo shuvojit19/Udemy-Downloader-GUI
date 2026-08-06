@@ -575,8 +575,13 @@ function updateCourseStatusTags($course, customData = {}) {
 	const drmStatus = $course.data("drmStatus") || "";
 	const drmDetails = $course.data("drmDetails") || "";
 	const encryptedVideos = Number($course.find('input[name="encryptedvideos"]').val() || 0);
+	const seqNum = Number($course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || 0);
 
 	let tagsHtml = "";
+
+	if (seqNum > 0) {
+		tagsHtml += `<span class="ui blue tiny label tag-sequence" style="margin: 0;"><i class="hashtag icon"></i> Seq #${seqNum}</span>`;
+	}
 
 	if (isCompleted) {
 		const dateStr = historyDate ? ` (${historyDate})` : "";
@@ -1613,6 +1618,7 @@ async function verifyCourseDownloads($course) {
 
 		ui.showProgress($course, false);
 
+		const seqNum = $course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || "N/A";
 		const isComplete = missingItems.length === 0;
 		updateCourseStatusTags($course, {
 			verifiedStatus: isComplete ? "complete" : "missing",
@@ -1620,11 +1626,11 @@ async function verifyCourseDownloads($course) {
 		});
 
 		const message = isComplete
-			? `Course Verification: ${courseName}\n- Status: Verified 100% Complete (${totalItemsChecked} items intact)`
-			: `Course Verification: ${courseName}\n- Status: ${missingItems.length} missing items detected out of ${totalItemsChecked}`;
+			? `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: Verified 100% Complete (${totalItemsChecked} items intact)`
+			: `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: ${missingItems.length} missing items detected out of ${totalItemsChecked}`;
 
 		dialogs.alert(message, function () {});
-		appendLog("Course Verification", message);
+		appendLog(`Course Verification [Seq #${seqNum}]`, message);
 
 		if (isComplete) {
 			$course.attr("course-completed", true);
@@ -1645,6 +1651,7 @@ async function checkDrmStatus($course) {
 	const courseId = String($course.attr("course-id") || "").trim();
 	const courseName = $course.find(".coursename").text();
 	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
+	const seqNum = $course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || "N/A";
 
 	if (!courseId) return;
 
@@ -1694,7 +1701,7 @@ async function checkDrmStatus($course) {
 			drmDetails: canDownloadEverything ? "100% Downloadable" : `${drmEncryptedCount}/${totalLectures} encrypted`,
 		});
 
-		const statusMessage = `DRM Protection Status: ${courseName}
+		const statusMessage = `[Seq #${seqNum}] DRM Protection Status: ${courseName}
 - Total Lectures: ${totalLectures}
 - Downloadable Videos: ${downloadableCount}
 - DRM Encrypted Videos: ${drmEncryptedCount}
@@ -1702,7 +1709,7 @@ async function checkDrmStatus($course) {
 Can download everything? ${canDownloadEverything ? "YES (100% Downloadable)" : `NO (${drmEncryptedCount} lectures protected by DRM encryption)`}`;
 
 		dialogs.alert(statusMessage, function () {});
-		appendLog("DRM Check", statusMessage);
+		appendLog(`DRM Check [Seq #${seqNum}]`, statusMessage);
 		$course.find(".download-status").show();
 	} catch (error) {
 		ui.showProgress($course, false);
@@ -2704,7 +2711,42 @@ function saveLogFile() {
 				let filePath = result.filePath;
 				if (!filePath.endsWith(".txt")) filePath += ".txt";
 
-				let content = "";
+				let content = `================================================================================\n`;
+				content += `UDELER SYSTEM LOG & COURSE AUDIT SUMMARY\n`;
+				content += `Exported: ${new Date().toLocaleString()}\n`;
+				content += `App Version: v1.14.0\n`;
+				content += `================================================================================\n\n`;
+
+				content += `--- COURSE LIST & STATUS SUMMARY ---\n\n`;
+
+				const $allCourses = $(".ui.course.item");
+				if ($allCourses.length > 0) {
+					$allCourses.each((index, el) => {
+						const $c = $(el);
+						const courseId = $c.attr("course-id") || "N/A";
+						const courseName = $c.find(".coursename").text().trim() || "Unknown Course";
+						const seqNum = $c.find('input[name="sequence-number"]').val() || $c.data("sequenceNumber") || (index + 1);
+						const isCompleted = $c.attr("course-completed") === "true" || $c.data("completed") === true;
+						const historyDate = $c.data("historyDate") || "";
+						const verifiedStatus = $c.data("verifiedStatus") || "Not Verified";
+						const verifiedDetails = $c.data("verifiedDetails") || "";
+						const drmStatus = $c.data("drmStatus") || (Number($c.find('input[name="encryptedvideos"]').val() || 0) > 0 ? "protected" : "Not Checked");
+						const drmDetails = $c.data("drmDetails") || "";
+						const pathDownloaded = $c.find('input[name="path-downloaded"]').val() || "Default Directory";
+
+						content += `[Seq #${seqNum}] Course: ${courseName} (ID: ${courseId})\n`;
+						content += `  - Download Status: ${isCompleted ? `Finished (${historyDate})` : "In Progress / Queued"}\n`;
+						content += `  - DRM Protection: ${drmStatus === "free" ? "DRM Free (100% Downloadable)" : drmStatus === "protected" ? `DRM Protected (${drmDetails || "Encrypted videos present"})` : "Not Checked"}\n`;
+						content += `  - Verification Status: ${verifiedStatus === "complete" ? `Verified (${verifiedDetails || "Intact"})` : verifiedStatus === "missing" ? `Missing Files (${verifiedDetails})` : "Not Verified"}\n`;
+						content += `  - Download Path: ${pathDownloaded}\n\n`;
+					});
+				} else {
+					content += `(No course cards active in current view)\n\n`;
+				}
+
+				content += `================================================================================\n`;
+				content += `DETAILED CHRONOLOGICAL EVENT LOGS\n`;
+				content += `================================================================================\n\n`;
 
 				loggers.forEach((item) => {
 					content += `${item.datetime} - ${item.title}: ${item.description}\n`;
@@ -2715,7 +2757,7 @@ function saveLogFile() {
 						appendLog("saveLogFile_Error", error);
 						return;
 					}
-					console.log("File successfully create!");
+					console.log("Log file successfully created!");
 				});
 			}
 		});
