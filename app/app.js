@@ -2836,30 +2836,85 @@ function startDownload($course, courseData, subTitle = "") {
 	}
 }
 
+function findMatchingSubtitle(subtitlesAvailable, targetSubtitle) {
+	if (!subtitlesAvailable || !targetSubtitle) return null;
+
+	const cleanTarget = String(targetSubtitle).toLowerCase().replace(/\s*\[.*?\]/g, "").replace(/\s*\(.*?\)/g, "").trim();
+	if (!cleanTarget) return null;
+
+	// 1. Exact normalized match
+	for (const key in subtitlesAvailable) {
+		const cleanKey = String(key).toLowerCase().replace(/\s*\[.*?\]/g, "").replace(/\s*\(.*?\)/g, "").trim();
+		if (cleanKey === cleanTarget) {
+			return key;
+		}
+	}
+
+	// 2. Contains or startsWith match
+	for (const key in subtitlesAvailable) {
+		const cleanKey = String(key).toLowerCase().replace(/\s*\[.*?\]/g, "").replace(/\s*\(.*?\)/g, "").trim();
+		if (cleanKey.startsWith(cleanTarget) || cleanTarget.startsWith(cleanKey) || cleanKey.includes(cleanTarget)) {
+			return key;
+		}
+	}
+
+	// 3. Language code / ISO alias mapping
+	const langMap = {
+		english: ["en", "eng"],
+		spanish: ["es", "spa", "espanol", "español"],
+		french: ["fr", "fra", "francais", "français"],
+		german: ["de", "deu", "deutsch"],
+		portuguese: ["pt", "por", "portugues", "português"],
+		italian: ["it", "ita", "italiano"],
+		turkish: ["tr", "tur", "turkce", "türkçe"],
+		arabic: ["ar", "ara"],
+		chinese: ["zh", "chi", "zho"],
+		japanese: ["ja", "jpn"],
+		korean: ["ko", "kor"],
+		russian: ["ru", "rus"],
+		hindi: ["hi", "hin"],
+		indonesian: ["id", "ind"],
+	};
+
+	const aliases = langMap[cleanTarget] || [];
+	for (const key in subtitlesAvailable) {
+		const cleanKey = String(key).toLowerCase().replace(/\s*\[.*?\]/g, "").replace(/\s*\(.*?\)/g, "").trim();
+		if (aliases.includes(cleanKey)) {
+			return key;
+		}
+	}
+
+	return null;
+}
+
 function askForSubtitle(subtitlesAvailable, totalLectures, defaultSubtitle = "", callback) {
+	try {
+		if (!subtitlesAvailable || Object.keys(subtitlesAvailable).length === 0) {
+			callback("");
+			return;
+		}
+	} catch (error) {
+		callback("");
+		return;
+	}
+
+	const prefSub = Settings.download.defaultSubtitle || defaultSubtitle || "";
+	if (prefSub) {
+		const matchedKey = findMatchingSubtitle(subtitlesAvailable, prefSub);
+		if (matchedKey) {
+			console.log(`[askForSubtitle] Matched default subtitle preference "${prefSub}" to available subtitle key "${matchedKey}". Skipping modal prompt.`);
+			callback(matchedKey);
+			return;
+		}
+	}
+
 	const subtitleLanguages = [];
 	const languages = [];
 	const totals = {};
 	const languageKeys = {};
 
-    try {
-        if (subtitlesAvailable && Object.keys(subtitlesAvailable).length === 0) {
-            callback("");
-            return;
-        }
-    } catch (error) {
-        return;
-    }
-
-	defaultSubtitle = defaultSubtitle.replace(/\s*\[.*?\]/g, "").trim();
 	for (const key in subtitlesAvailable) {
 		const subtitle = key.replace(/\s*\[.*?\]/g, "").trim();
-
-		// default subtitle exists
-		if (subtitle === defaultSubtitle) {
-			callback(key);
-			return;
-		}
 
 		if (!(subtitle in totals)) {
 			languages.push(subtitle);
@@ -2872,9 +2927,11 @@ function askForSubtitle(subtitlesAvailable, totalLectures, defaultSubtitle = "",
 	}
 
 	if (languages.length === 1) {
-		callback(languageKeys[0]);
+		const singleKey = languageKeys[languages[0]] ? languageKeys[languages[0]].join("|") : Object.keys(subtitlesAvailable)[0];
+		callback(singleKey);
 		return;
 	} else if (languages.length === 0) {
+		callback("");
 		return;
 	}
 
