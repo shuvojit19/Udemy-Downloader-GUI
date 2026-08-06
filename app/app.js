@@ -1514,6 +1514,7 @@ async function prepareDownloading($course, subtitle) {
 	}
 
 	if (!$downloadItem.length) {
+		const history = Settings.downloadHistory.find((x) => Number(x.id) === Number(courseId));
 		const courseObj = {
 			id: courseId,
 			url: $course.attr("course-url"),
@@ -1528,6 +1529,10 @@ async function prepareDownloading($course, subtitle) {
 			combinedProgress: 0,
 			progressStatus: translate("Fetching course details..."),
 			sequenceNumber: Number($course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || 0),
+			verifiedStatus: history ? history.verifiedStatus : "",
+			verifiedDetails: history ? history.verifiedDetails : "",
+			drmStatus: history ? history.drmStatus : "",
+			drmDetails: history ? history.drmDetails : "",
 		};
 		$downloadItem = createCourseElement(courseObj, true);
 		assignSequenceNumberToCourse($downloadItem);
