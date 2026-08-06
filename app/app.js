@@ -512,27 +512,24 @@ function createCourseElement(courseCache, downloadSection = false) {
         </div>`);
 
 	$course.data("sequenceNumber", courseCache.sequenceNumber);
+	$course.data("historyDate", history ? history.date : "");
+	$course.data("completed", courseCache.completed);
 
 	if (!downloadSection) {
 		if (courseCache.completed) {
 			resetCourse($course, $course.find(".download-success"));
 		} else if (courseCache.encryptedVideos > 0) {
 			resetCourse($course, $course.find(".course-encrypted"));
-		} else {
-			$course.find(".info-downloaded").html(courseCache.infoDownloaded).css("color", "#6d05e8").show();
 		}
 	} else {
 		if (!courseCache.completed) {
 			$course.find(".individual.progress").progress("set percent", courseCache.individualProgress).css("display", "block");
 			$course.find(".combined.progress").progress("set percent", courseCache.combinedProgress).css("display", "block");
 			$course.find(".download-status .label").html(courseCache.progressStatus);
-
-			$course.find(".info-downloaded").hide();
-			// $course.css("padding-bottom", "25px");
-		} else {
-			$course.find(".info-downloaded").html(courseCache.infoDownloaded).css("color", "#48ca56").show();
 		}
 	}
+
+	updateCourseStatusTags($course);
 
 	if (Number(courseCache.encryptedVideos) === 0) {
 		$course.find(".icon-encrypted").hide();
@@ -549,6 +546,57 @@ function createCourseElement(courseCache, downloadSection = false) {
 	}
 
 	return $course;
+}
+
+function updateCourseStatusTags($course, customData = {}) {
+	if (!$course || !$course.length) return;
+
+	let $tagsContainer = $course.find(".course-status-tags");
+	if (!$tagsContainer.length) {
+		$tagsContainer = $('<div class="course-status-tags" style="margin-top: 8px; margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;"></div>');
+		const $content = $course.find(".content");
+		if ($content.find(".download-status").length) {
+			$content.find(".download-status").prepend($tagsContainer);
+		} else {
+			$content.append($tagsContainer);
+		}
+	}
+
+	if (customData.verifiedStatus !== undefined) $course.data("verifiedStatus", customData.verifiedStatus);
+	if (customData.verifiedDetails !== undefined) $course.data("verifiedDetails", customData.verifiedDetails);
+	if (customData.drmStatus !== undefined) $course.data("drmStatus", customData.drmStatus);
+	if (customData.drmDetails !== undefined) $course.data("drmDetails", customData.drmDetails);
+	if (customData.historyDate !== undefined) $course.data("historyDate", customData.historyDate);
+
+	const isCompleted = $course.attr("course-completed") === "true" || $course.data("completed") === true;
+	const historyDate = $course.data("historyDate") || "";
+	const verifiedStatus = $course.data("verifiedStatus") || "";
+	const verifiedDetails = $course.data("verifiedDetails") || "";
+	const drmStatus = $course.data("drmStatus") || "";
+	const drmDetails = $course.data("drmDetails") || "";
+	const encryptedVideos = Number($course.find('input[name="encryptedvideos"]').val() || 0);
+
+	let tagsHtml = "";
+
+	if (isCompleted) {
+		const dateStr = historyDate ? ` (${historyDate})` : "";
+		tagsHtml += `<span class="ui green tiny label tag-finished" style="margin: 0;"><i class="check circle icon"></i> ${translate("Download Finished")}${dateStr}</span>`;
+	}
+
+	if (verifiedStatus === "complete") {
+		tagsHtml += `<span class="ui purple tiny label tag-verified" style="margin: 0;"><i class="shield check icon"></i> Verified (${verifiedDetails || "100% Intact"})</span>`;
+	} else if (verifiedStatus === "missing") {
+		tagsHtml += `<span class="ui red tiny label tag-verified" style="margin: 0;"><i class="exclamation triangle icon"></i> ${verifiedDetails || "Missing Files"}</span>`;
+	}
+
+	if (drmStatus === "protected" || (encryptedVideos > 0 && !drmStatus)) {
+		tagsHtml += `<span class="ui orange tiny label tag-drm" style="margin: 0;"><i class="lock icon"></i> DRM Protected ${drmDetails ? `(${drmDetails})` : ""}</span>`;
+	} else if (drmStatus === "free") {
+		tagsHtml += `<span class="ui teal tiny label tag-drm" style="margin: 0;"><i class="unlock icon"></i> DRM Free (100% Downloadable)</span>`;
+	}
+
+	$tagsContainer.html(tagsHtml);
+	$course.find(".info-downloaded").hide();
 }
 
 function getActiveDownloadCount() {
@@ -1558,15 +1606,15 @@ async function verifyCourseDownloads($course) {
 		ui.showProgress($course, false);
 
 		if (missingItems.length === 0) {
-			$course.find(".download-status .label").html(`${translate("Verified Complete")} (${totalItemsChecked} ${translate("items present")})`).css("color", "#48ca56");
 			$course.attr("course-completed", true);
 			$course.find(".download-success").show();
 			$course.find(".download-status").show();
+			updateCourseStatusTags($course, { verifiedStatus: "complete", verifiedDetails: `${totalItemsChecked} items intact` });
 			appendLog("Course Verification", `Course: ${courseName}\nStatus: Verified 100% Complete! (${totalItemsChecked} items intact)`);
 			saveDownloads(false);
 		} else {
 			appendLog("Course Verification", `Course: ${courseName}\nStatus: ${missingItems.length} missing items detected out of ${totalItemsChecked}. Re-downloading missing files...`);
-			$course.find(".download-status .label").html(`${translate("Missing")} ${missingItems.length} ${translate("files — Re-downloading missing items...")}`);
+			updateCourseStatusTags($course, { verifiedStatus: "missing", verifiedDetails: `Missing ${missingItems.length} files` });
 			$course.attr("course-completed", "");
 			prepareDownloading($course, $course.find('input[name="selectedSubtitle"]').val());
 		}
@@ -1625,7 +1673,6 @@ async function checkDrmStatus($course) {
 		ui.configureEncryptedIcon($course);
 
 		const canDownloadEverything = drmEncryptedCount === 0;
-		const statusTitle = canDownloadEverything ? "No DRM Protection Detected" : "DRM Protection Detected";
 		const statusMessage = `Course: ${courseName}
 - Total Lectures: ${totalLectures}
 - Downloadable Videos: ${downloadableCount}
@@ -1636,11 +1683,11 @@ Can download everything? ${canDownloadEverything ? "YES (100% Downloadable)" : `
 		console.log(`[DRM Check] ${statusMessage}`);
 		dialogs.alert(statusMessage, function () {});
 
-		const summaryLabel = canDownloadEverything
-			? `DRM Free (100% Downloadable - ${totalLectures} items)`
-			: `DRM Protected (${drmEncryptedCount}/${totalLectures} items encrypted)`;
-
-		$course.find(".download-status .label").html(summaryLabel).css("color", canDownloadEverything ? "#48ca56" : "#f2711c");
+		if (canDownloadEverything) {
+			updateCourseStatusTags($course, { drmStatus: "free", drmDetails: "100% Downloadable" });
+		} else {
+			updateCourseStatusTags($course, { drmStatus: "protected", drmDetails: `${drmEncryptedCount}/${totalLectures} encrypted` });
+		}
 		$course.find(".download-status").show();
 
 		appendLog("DRM Check", statusMessage);

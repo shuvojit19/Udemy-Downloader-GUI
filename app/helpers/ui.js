@@ -85,19 +85,19 @@ const ui = {
                 <button class="ui basic purple verify button" title="Verify Course Files"><i class="shield check icon"></i></button>
                 <button class="ui basic orange check-drm button" title="Check DRM & Encryption Status"><i class="lock icon"></i></button>
             </div>
-            <div class="ui horizontal divider"></div>
+            <div class="course-status-tags" style="margin-top: 8px; margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;"></div>
+            <div class="ui horizontal divider" style="margin: 6px 0;"></div>
             <progress class="prepare-downloading" style="width: 100%; display: none;"></progress>
             <div class="ui tiny indicating individual progress">
                 <div class="bar"></div>
             </div>
-            <div class="ui horizontal divider"></div>
+            <div class="ui horizontal divider" style="margin: 6px 0;"></div>
             <div class="ui small indicating combined progress">
                 <div class="bar">
                     <div class="progress"></div>
                 </div>
                 <div class="label">${translate("Building Course Data")}</div>
-            </div>
-            <div class="info-downloaded"></div>`;
+            </div>`;
 	},
 	prepareDownloading: ($courseCard) => {
 		$courseCard.find(".prepare-downloading").show();
