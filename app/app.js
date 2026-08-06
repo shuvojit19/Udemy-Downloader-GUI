@@ -1782,17 +1782,15 @@ async function downloadMissingFiles($course) {
 	$course.find(".download-status").show();
 	ui.showProgress($course, true);
 
-	let courseData = $course.data("courseData");
 	try {
+		$course.find(".status-text-label").html(translate("Fetching fresh download links..."));
+		const courseData = await fetchCourseContent(courseId, courseName, courseUrl);
 		if (!courseData) {
-			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
-			if (!courseData) {
-				$course.find(".status-text-label").html(translate("Failed to fetch course details."));
-				ui.showProgress($course, false);
-				return;
-			}
-			$course.data("courseData", courseData);
+			$course.find(".status-text-label").html(translate("Failed to fetch course details."));
+			ui.showProgress($course, false);
+			return;
 		}
+		$course.data("courseData", courseData);
 
 		const sanitizedCourseName = sanitize(courseData.name.trim());
 		const downloadDirectory = Settings.downloadDirectory();
@@ -2528,9 +2526,12 @@ function startDownload($course, courseData, subTitle = "") {
 					}
 
 					retry++;
+					if (retry < 3) {
+						await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, retry)));
+					}
 				}
 
-				return null;
+				throw new Error(`Failed to fetch file after 3 attempts: ${url}`);
 			}
 
 			// read highest quality playlist
@@ -2689,7 +2690,7 @@ function startDownload($course, courseData, subTitle = "") {
 									const startTime = performance.now();
 
 									const responses = await Promise.all(
-										batchUrls.map((url) => m3u8DownloadLimit.run(() => getFile(url, true).catch(() => null)))
+										batchUrls.map((url) => m3u8DownloadLimit.run(() => getFile(url, true)))
 									);
 
 									const endTime = performance.now();
