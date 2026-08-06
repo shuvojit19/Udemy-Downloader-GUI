@@ -629,7 +629,7 @@ function updateCourseStatusTags($course, customData = {}) {
 
 	let $tagsContainer = $course.find(".course-status-tags");
 	if (!$tagsContainer.length) {
-		$tagsContainer = $('<div class="course-status-tags" style="margin-top: 8px; margin-bottom: 4px; display: flex; flex-direction: column; gap: 4px;"></div>');
+		$tagsContainer = $('<div class="course-status-tags" style="margin-top: 8px; margin-bottom: 4px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; justify-content: flex-start; clear: both; text-align: left;"></div>');
 		const $content = $course.find(".content");
 		if ($content.find(".download-status").length) {
 			$content.find(".download-status").prepend($tagsContainer);
@@ -637,7 +637,7 @@ function updateCourseStatusTags($course, customData = {}) {
 			$content.append($tagsContainer);
 		}
 	} else {
-		$tagsContainer.css({ display: "flex", "flex-direction": "column", gap: "4px" });
+		$tagsContainer.css({ display: "flex", "flex-direction": "column", gap: "4px", "align-items": "flex-start", "justify-content": "flex-start", clear: "both", "text-align": "left" });
 	}
 
 	if (customData.verifiedStatus !== undefined) $course.data("verifiedStatus", customData.verifiedStatus);
@@ -680,13 +680,13 @@ function updateCourseStatusTags($course, customData = {}) {
 
 	let rowsHtml = "";
 	if (baseTags) {
-		rowsHtml += `<div class="tags-row base-row" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">${baseTags}</div>`;
+		rowsHtml += `<div class="tags-row base-row" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-start;">${baseTags}</div>`;
 	}
 	if (verificationTag) {
-		rowsHtml += `<div class="tags-row verification-row" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">${verificationTag}</div>`;
+		rowsHtml += `<div class="tags-row verification-row" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-start;">${verificationTag}</div>`;
 	}
 	if (drmTag) {
-		rowsHtml += `<div class="tags-row drm-row" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">${drmTag}</div>`;
+		rowsHtml += `<div class="tags-row drm-row" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-start;">${drmTag}</div>`;
 	}
 
 	$tagsContainer.html(rowsHtml);

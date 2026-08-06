@@ -250,3 +250,26 @@ body .dialog-widget.background {
   right: 10px;
   float: right;
 }
+
+.course-status-tags {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  margin-top: 8px !important;
+  margin-bottom: 4px !important;
+  clear: both !important;
+  width: 100% !important;
+}
+
+.course-status-tags .tags-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  width: 100% !important;
+}
