@@ -128,14 +128,9 @@ $(".ui.dashboard .content").on("click", ".download.button, .download-error", fun
 	prepareDownloading($(this).parents(".course"));
 });
 
-$(".ui.dashboard .content").on("click", ".verify.button", function (e) {
+$(".ui.dashboard .content").on("click", ".verify.button, .check-drm.button", function (e) {
 	e.stopImmediatePropagation();
-	verifyCourseDownloads($(this).parents(".course"));
-});
-
-$(".ui.dashboard .content").on("click", ".check-drm.button", function (e) {
-	e.stopImmediatePropagation();
-	checkDrmStatus($(this).parents(".course"));
+	performCourseAudit($(this).parents(".course"));
 });
 
 $(".ui.dashboard .content").on("click", "#clear_logger", clearLogArea);
@@ -1508,7 +1503,7 @@ async function prepareDownloading($course, subtitle) {
 	}
 }
 
-async function verifyCourseDownloads($course) {
+async function performCourseAudit($course) {
 	const courseId = String($course.attr("course-id") || "").trim();
 	const courseName = $course.find(".coursename").text();
 	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
@@ -1519,7 +1514,7 @@ async function verifyCourseDownloads($course) {
 	$course.find(".download-error").hide();
 	$course.find(".course-encrypted").hide();
 
-	$course.find(".download-status .label").html(translate("Verifying course files..."));
+	$course.find(".download-status .label").html(translate("Verifying files & checking DRM status..."));
 	$course.find(".download-status").show();
 	ui.showProgress($course, true);
 
@@ -1528,7 +1523,7 @@ async function verifyCourseDownloads($course) {
 		if (!courseData) {
 			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
 			if (!courseData) {
-				$course.find(".download-status .label").html(translate("Failed to fetch course details for verification."));
+				$course.find(".download-status .label").html(translate("Failed to fetch course details."));
 				ui.showProgress($course, false);
 				return;
 			}
@@ -1539,8 +1534,12 @@ async function verifyCourseDownloads($course) {
 		const downloadDirectory = Settings.downloadDirectory();
 		const courseDir = `${downloadDirectory}/${sanitizedCourseName}`;
 
-		let totalItemsChecked = 0;
+		let totalFilesChecked = 0;
 		const missingItems = [];
+
+		let totalLectures = 0;
+		let drmEncryptedCount = 0;
+		let downloadableCount = 0;
 
 		courseData.chapters.forEach((chapter, chapterIndex) => {
 			const countLectures = chapter.lectures.length;
@@ -1554,18 +1553,25 @@ async function verifyCourseDownloads($course) {
 			).name;
 
 			chapter.lectures.forEach((lecture, lectureIndex) => {
+				totalLectures++;
+				if (lecture.isEncrypted || (lecture.src && String(lecture.src).includes("encrypted-files"))) {
+					drmEncryptedCount++;
+				} else {
+					downloadableCount++;
+				}
+
 				const sanitizedLectureName = sanitize(lecture.name.trim());
 				const lectureType = (lecture.type || "").toLowerCase();
 
 				if (lectureType === "article" || lectureType === "url") {
-					totalItemsChecked++;
+					totalFilesChecked++;
 					const wfDir = `${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`;
 					const htmlFile = utils.getSequenceName(lectureIndex + 1, countLectures, sanitizedLectureName + ".html", ". ", wfDir).fullPath;
 					if (!fs.existsSync(htmlFile) || fs.statSync(htmlFile).size === 0) {
 						missingItems.push({ type: "html", path: htmlFile });
 					}
 				} else {
-					totalItemsChecked++;
+					totalFilesChecked++;
 					const seqName = utils.getSequenceName(
 						lectureIndex + 1,
 						countLectures,
@@ -1582,7 +1588,7 @@ async function verifyCourseDownloads($course) {
 				if (lecture.attachments && Array.isArray(lecture.attachments)) {
 					lecture.attachments.forEach((att, attIndex) => {
 						if (!att || !att.name) return;
-						totalItemsChecked++;
+						totalFilesChecked++;
 						const attachmentName = (att.name || "attachment").trim();
 						let fileExtension = (att.src || "").split("/").pop().split("?").shift().split(".").pop() || "";
 						fileExtension = att.name.split(".").pop() === fileExtension ? "" : (fileExtension ? "." + fileExtension : "");
@@ -1605,97 +1611,50 @@ async function verifyCourseDownloads($course) {
 
 		ui.showProgress($course, false);
 
-		if (missingItems.length === 0) {
-			$course.attr("course-completed", true);
-			$course.find(".download-success").show();
-			$course.find(".download-status").show();
-			updateCourseStatusTags($course, { verifiedStatus: "complete", verifiedDetails: `${totalItemsChecked} items intact` });
-			appendLog("Course Verification", `Course: ${courseName}\nStatus: Verified 100% Complete! (${totalItemsChecked} items intact)`);
-			saveDownloads(false);
-		} else {
-			appendLog("Course Verification", `Course: ${courseName}\nStatus: ${missingItems.length} missing items detected out of ${totalItemsChecked}. Re-downloading missing files...`);
-			updateCourseStatusTags($course, { verifiedStatus: "missing", verifiedDetails: `Missing ${missingItems.length} files` });
-			$course.attr("course-completed", "");
-			prepareDownloading($course, $course.find('input[name="selectedSubtitle"]').val());
-		}
-	} catch (error) {
-		ui.showProgress($course, false);
-		appendLog("EVERIFY_COURSE", error);
-		$course.find(".download-status .label").html(translate("Verification failed. Check logger for details."));
-	}
-}
-
-async function checkDrmStatus($course) {
-	const courseId = String($course.attr("course-id") || "").trim();
-	const courseName = $course.find(".coursename").text();
-	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
-
-	if (!courseId) return;
-
-	$course.find(".download-status .label").html(translate("Checking DRM & Encryption status..."));
-	$course.find(".download-status").show();
-	ui.showProgress($course, true);
-
-	let courseData = $course.data("courseData");
-	try {
-		if (!courseData) {
-			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
-			if (!courseData) {
-				$course.find(".download-status .label").html(translate("Failed to fetch course details for DRM check."));
-				ui.showProgress($course, false);
-				return;
-			}
-			$course.data("courseData", courseData);
-		}
-
-		ui.showProgress($course, false);
-
-		let totalLectures = 0;
-		let drmEncryptedCount = 0;
-		let downloadableCount = 0;
-
-		if (courseData.chapters && Array.isArray(courseData.chapters)) {
-			courseData.chapters.forEach((chapter) => {
-				if (chapter.lectures && Array.isArray(chapter.lectures)) {
-					chapter.lectures.forEach((lecture) => {
-						totalLectures++;
-						if (lecture.isEncrypted || (lecture.src && String(lecture.src).includes("encrypted-files"))) {
-							drmEncryptedCount++;
-						} else {
-							downloadableCount++;
-						}
-					});
-				}
-			});
-		}
-
 		$course.find('input[name="encryptedvideos"]').val(drmEncryptedCount);
 		ui.configureEncryptedIcon($course);
 
-		const canDownloadEverything = drmEncryptedCount === 0;
-		const statusMessage = `Course: ${courseName}
-- Total Lectures: ${totalLectures}
-- Downloadable Videos: ${downloadableCount}
-- DRM Encrypted Videos: ${drmEncryptedCount}
+		const isVerifiedComplete = missingItems.length === 0;
+		const isDrmFree = drmEncryptedCount === 0;
 
-Can download everything? ${canDownloadEverything ? "YES (100% Downloadable)" : `NO (${drmEncryptedCount} lectures are protected by Udemy DRM encryption)`}`;
+		updateCourseStatusTags($course, {
+			verifiedStatus: isVerifiedComplete ? "complete" : "missing",
+			verifiedDetails: isVerifiedComplete ? `${totalFilesChecked} items intact` : `Missing ${missingItems.length} files`,
+			drmStatus: isDrmFree ? "free" : "protected",
+			drmDetails: isDrmFree ? "100% Downloadable" : `${drmEncryptedCount}/${totalLectures} encrypted`,
+		});
 
-		console.log(`[DRM Check] ${statusMessage}`);
-		dialogs.alert(statusMessage, function () {});
+		const auditReport = `Course Audit: ${courseName}
 
-		if (canDownloadEverything) {
-			updateCourseStatusTags($course, { drmStatus: "free", drmDetails: "100% Downloadable" });
+🛡️ Verification: ${isVerifiedComplete ? `Verified 100% Complete (${totalFilesChecked} items intact)` : `Missing ${missingItems.length} files out of ${totalFilesChecked}`}
+🔒 DRM Protection: ${isDrmFree ? "No DRM Protection (100% Downloadable)" : `DRM Protected (${drmEncryptedCount} out of ${totalLectures} videos encrypted)`}
+
+Can download everything? ${isDrmFree ? "YES" : `NO (${drmEncryptedCount} videos are encrypted by Udemy DRM)`}`;
+
+		dialogs.alert(auditReport, function () {});
+		appendLog("Course Audit", auditReport);
+
+		if (isVerifiedComplete) {
+			$course.attr("course-completed", true);
+			$course.find(".download-success").show();
+			saveDownloads(false);
 		} else {
-			updateCourseStatusTags($course, { drmStatus: "protected", drmDetails: `${drmEncryptedCount}/${totalLectures} encrypted` });
+			$course.attr("course-completed", "");
 		}
 		$course.find(".download-status").show();
-
-		appendLog("DRM Check", statusMessage);
 	} catch (error) {
 		ui.showProgress($course, false);
-		appendLog("ECHK_DRM", error);
-		$course.find(".download-status .label").html(translate("DRM check failed. Check logger for details."));
+		appendLog("EAUDIT_COURSE", error);
+		$course.find(".download-status .label").html(translate("Audit failed. Check logger for details."));
 	}
+}
+
+async function verifyCourseDownloads($course) {
+	return await performCourseAudit($course);
+}
+
+async function checkDrmStatus($course) {
+	return await performCourseAudit($course);
 }
 
 function startDownload($course, courseData, subTitle = "") {
