@@ -96,7 +96,7 @@ const ui = {
                 <div class="bar">
                     <div class="progress"></div>
                 </div>
-                <div class="label">${translate("Building Course Data")}</div>
+                <div class="label status-text-label">${translate("Building Course Data")}</div>
             </div>`;
 	},
 	prepareDownloading: ($courseCard) => {
@@ -107,7 +107,7 @@ const ui = {
 		$courseCard.find(".combined.progress").progress("reset");
 
 		$courseCard.find(".download-quality").html("").hide();
-		$courseCard.find(".download-speed").hide();
+		$courseCard.find(".download-speed").hide().find(".value").html(0);
 		$courseCard.find(".download-error").hide();
 		$courseCard.find(".course-encrypted").hide();
 		$courseCard.find(".download-status").show();
@@ -115,14 +115,23 @@ const ui = {
 		$courseCard.find(".icon-encrypted").hide();
 		$courseCard.find(".ui.tiny.image .tooltip").hide();
 		$courseCard.find(".ui.tiny.image").removeClass("wrapper");
-		// $courseCard.find('input[name="encryptedvideos"]').val(0);
-		// $courseCard.css("padding-bottom", "25px")
 	},
 	showProgress: ($courseCard, shouldShow) => {
 		$courseCard.find(".prepare-downloading").hide();
+		$courseCard.find(".individual.progress").hide();
 
-		const $progressElement = $courseCard.find(".ui.progress");
-		shouldShow ? $progressElement.show() : $progressElement.hide();
+		const $combinedProgress = $courseCard.find(".combined.progress");
+		if (shouldShow) {
+			$courseCard.find(".ui.progress").show();
+		} else {
+			// Keep combined progress bar visible if it has been initialized with progress
+			const hasProgress = $combinedProgress.find(".progress").text() || $combinedProgress.find(".label").text().includes(translate("Downloaded"));
+			if (hasProgress) {
+				$combinedProgress.show();
+			} else {
+				$combinedProgress.hide();
+			}
+		}
 	},
 	configureEncryptedIcon($courseCard) {
 		if (Number($courseCard.find("input[name='encryptedvideos']").val()) === 0) {

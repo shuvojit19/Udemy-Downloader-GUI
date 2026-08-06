@@ -525,7 +525,7 @@ function createCourseElement(courseCache, downloadSection = false) {
 		if (!courseCache.completed) {
 			$course.find(".individual.progress").progress("set percent", courseCache.individualProgress).css("display", "block");
 			$course.find(".combined.progress").progress("set percent", courseCache.combinedProgress).css("display", "block");
-			$course.find(".download-status .label").html(courseCache.progressStatus);
+			$course.find(".status-text-label").html(courseCache.progressStatus);
 		}
 	}
 
@@ -710,7 +710,7 @@ function processDownloadQueue() {
 	pendingItems.forEach((element, index) => {
 		const $item = $(element);
 		const queueRank = index + 1;
-		$item.find(".download-status .label").html(`${translate("Queued")} #${queueRank}`);
+		$item.find(".status-text-label").html(`${translate("Queued")} #${queueRank}`);
 		$item.find(".download-status").show();
 		$item.find(".action.buttons .download.button").addClass("disabled");
 		$item.find(".action.buttons .pause.button").addClass("disabled");
@@ -728,7 +728,7 @@ function processDownloadQueue() {
 
 		$nextItem.find(".action.buttons .pause.button").removeClass("disabled");
 		$nextItem.find(".action.buttons .resume.button").addClass("disabled");
-		$nextItem.find(".download-status .label").html(translate("Downloading..."));
+		$nextItem.find(".status-text-label").html(translate("Downloading..."));
 		$nextItem.find(".download-status").show();
 
 		const startFn = $nextItem.data("startDownloadFn");
@@ -1625,6 +1625,20 @@ async function verifyCourseDownloads($course) {
 			verifiedDetails: isComplete ? `${totalItemsChecked} items intact` : `Missing ${missingItems.length} files`,
 		});
 
+		if (totalItemsChecked > 0) {
+			const intactCount = Math.max(0, totalItemsChecked - missingItems.length);
+			const $combinedProgress = $course.find(".combined.progress");
+			$combinedProgress.progress({
+				total: totalItemsChecked,
+				value: intactCount,
+				text: {
+					active: `${translate("Downloaded")} {value} ${translate("out of")} {total} ${translate("items")}`,
+				},
+			});
+			$combinedProgress.progress("set percent", parseInt((intactCount / totalItemsChecked) * 100));
+			$combinedProgress.show();
+		}
+
 		const message = isComplete
 			? `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: Verified 100% Complete (${totalItemsChecked} items intact)`
 			: `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: ${missingItems.length} missing items detected out of ${totalItemsChecked}`;
@@ -1643,7 +1657,7 @@ async function verifyCourseDownloads($course) {
 	} catch (error) {
 		ui.showProgress($course, false);
 		appendLog("EVERIFY_COURSE", error);
-		$course.find(".download-status .label").html(translate("Verification failed. Check logger for details."));
+		$course.find(".download-status .status-text-label").html(translate("Verification failed. Check logger for details."));
 	}
 }
 
@@ -1655,7 +1669,7 @@ async function checkDrmStatus($course) {
 
 	if (!courseId) return;
 
-	$course.find(".download-status .label").html(translate("Checking DRM & Encryption status..."));
+	$course.find(".status-text-label").html(translate("Checking DRM & Encryption status..."));
 	$course.find(".download-status").show();
 	ui.showProgress($course, true);
 
@@ -1664,7 +1678,7 @@ async function checkDrmStatus($course) {
 		if (!courseData) {
 			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
 			if (!courseData) {
-				$course.find(".download-status .label").html(translate("Failed to fetch course details for DRM check."));
+				$course.find(".status-text-label").html(translate("Failed to fetch course details for DRM check."));
 				ui.showProgress($course, false);
 				return;
 			}
@@ -1714,7 +1728,7 @@ Can download everything? ${canDownloadEverything ? "YES (100% Downloadable)" : `
 	} catch (error) {
 		ui.showProgress($course, false);
 		appendLog("ECHK_DRM", error);
-		$course.find(".download-status .label").html(translate("DRM check failed. Check logger for details."));
+		$course.find(".status-text-label").html(translate("DRM check failed. Check logger for details."));
 	}
 }
 
@@ -1865,7 +1879,8 @@ function startDownload($course, courseData, subTitle = "") {
 
 		$pauseButton.addClass("disabled");
 		$resumeButton.removeClass("disabled");
-		$course.find(".download-status .label").html(translate("Paused"));
+		$downloadSpeed.hide().find(".value").html(0);
+		$course.find(".status-text-label").html(translate("Paused"));
 		$course.find(".download-status").show();
 
 		if (isEncrypted) {
