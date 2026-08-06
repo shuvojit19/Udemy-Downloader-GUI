@@ -138,6 +138,18 @@ $(".ui.dashboard .content").on("click", ".check-drm.button", function (e) {
 	checkDrmStatus($(this).parents(".course"));
 });
 
+$(".ui.dashboard .content").on("click", ".download-missing.button", function (e) {
+	e.stopImmediatePropagation();
+	downloadMissingFiles($(this).parents(".course"));
+});
+
+$(".ui.dashboard .content").on("click", ".tag-verified.label", function (e) {
+	if ($(this).text().includes("Missing")) {
+		e.stopImmediatePropagation();
+		downloadMissingFiles($(this).parents(".course"));
+	}
+});
+
 $(".ui.dashboard .content").on("click", "#clear_logger", clearLogArea);
 
 $(".ui.dashboard .content").on("click", "#save_logger", saveLogFile);
@@ -1787,6 +1799,158 @@ Can download everything? ${canDownloadEverything ? "YES (100% Downloadable)" : `
 		ui.showProgress($course, false);
 		appendLog("ECHK_DRM", error);
 		$course.find(".status-text-label").html(translate("DRM check failed. Check logger for details."));
+	}
+}
+
+async function downloadMissingFiles($course) {
+	const courseId = String($course.attr("course-id") || "").trim();
+	const courseName = $course.find(".coursename").text();
+	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
+	const seqNum = $course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || "N/A";
+
+	if (!courseId) return;
+
+	$course.find(".status-text-label").html(translate("Checking for missing files..."));
+	$course.find(".download-status").show();
+	ui.showProgress($course, true);
+
+	let courseData = $course.data("courseData");
+	try {
+		if (!courseData) {
+			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
+			if (!courseData) {
+				$course.find(".status-text-label").html(translate("Failed to fetch course details."));
+				ui.showProgress($course, false);
+				return;
+			}
+			$course.data("courseData", courseData);
+		}
+
+		const sanitizedCourseName = sanitize(courseData.name.trim());
+		const downloadDirectory = Settings.downloadDirectory();
+		const courseDir = `${downloadDirectory}/${sanitizedCourseName}`;
+
+		let totalItemsChecked = 0;
+		const missingItems = [];
+
+		courseData.chapters.forEach((chapter, chapterIndex) => {
+			const countLectures = chapter.lectures.length;
+			const sanitizedChapterName = sanitize(chapter.name.trim());
+			const seqChapterName = utils.getSequenceName(
+				chapterIndex + 1,
+				courseData.chapters.length,
+				sanitizedChapterName,
+				". ",
+				courseDir
+			).name;
+
+			chapter.lectures.forEach((lecture, lectureIndex) => {
+				const sanitizedLectureName = sanitize(lecture.name.trim());
+				const lectureType = (lecture.type || "").toLowerCase();
+
+				if (lectureType === "article" || lectureType === "url") {
+					totalItemsChecked++;
+					const wfDir = `${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`;
+					const htmlFile = utils.getSequenceName(lectureIndex + 1, countLectures, sanitizedLectureName + ".html", ". ", wfDir).fullPath;
+					if (!fs.existsSync(htmlFile) || fs.statSync(htmlFile).size === 0) {
+						missingItems.push({ name: lecture.name, type: "html", path: htmlFile, isEncrypted: false });
+					}
+				} else {
+					totalItemsChecked++;
+					const seqName = utils.getSequenceName(
+						lectureIndex + 1,
+						countLectures,
+						sanitizedLectureName + (lectureType === "file" ? ".pdf" : ".mp4"),
+						". ",
+						`${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
+					);
+
+					if (!fs.existsSync(seqName.fullPath) || fs.statSync(seqName.fullPath).size === 0) {
+						const isEncrypted = lecture.isEncrypted || (lecture.src && String(lecture.src).includes("encrypted-files"));
+						missingItems.push({ name: lecture.name, type: "lecture", path: seqName.fullPath, isEncrypted, src: lecture.src });
+					}
+				}
+
+				if (lecture.attachments && Array.isArray(lecture.attachments)) {
+					lecture.attachments.forEach((att, attIndex) => {
+						if (!att || !att.name) return;
+						totalItemsChecked++;
+						const attachmentName = (att.name || "attachment").trim();
+						let fileExtension = (att.src || "").split("/").pop().split("?").shift().split(".").pop() || "";
+						fileExtension = att.name.split(".").pop() === fileExtension ? "" : (fileExtension ? "." + fileExtension : "");
+
+						const attSeqName = utils.getSequenceName(
+							lectureIndex + 1,
+							countLectures,
+							sanitize(attachmentName) + fileExtension,
+							`.${attIndex + 1} `,
+							`${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
+						);
+
+						if (!fs.existsSync(attSeqName.fullPath) || fs.statSync(attSeqName.fullPath).size === 0) {
+							missingItems.push({ name: attachmentName, type: "attachment", path: attSeqName.fullPath, isEncrypted: false, src: att.src });
+						}
+					});
+				}
+			});
+		});
+
+		ui.showProgress($course, false);
+
+		if (missingItems.length === 0) {
+			updateCourseStatusTags($course, {
+				verifiedStatus: "complete",
+				verifiedDetails: `${totalItemsChecked} items intact`,
+			});
+			dialogs.alert(`[Seq #${seqNum}] ${courseName}: All ${totalItemsChecked} files are 100% intact! No missing files to download.`, function () {});
+			appendLog(`Download Missing Files [Seq #${seqNum}]`, `${courseName}: All ${totalItemsChecked} items are intact.`);
+			return;
+		}
+
+		// Log missing files and check for un-downloadable items
+		let drmBlockedCount = 0;
+		let invalidUrlCount = 0;
+
+		missingItems.forEach((item) => {
+			if (item.isEncrypted) {
+				drmBlockedCount++;
+				appendLog(
+					`Missing File Un-downloadable [DRM Protected] [Seq #${seqNum}]`,
+					`Course: ${courseName}\nLecture: ${item.name}\nReason: Protected by Udemy DRM encryption. Cannot download encrypted video stream.`
+				);
+			} else if (!item.src && item.type !== "html") {
+				invalidUrlCount++;
+				appendLog(
+					`Missing File Un-downloadable [No URL] [Seq #${seqNum}]`,
+					`Course: ${courseName}\nItem: ${item.name}\nReason: Missing or invalid download URL.`
+				);
+			}
+		});
+
+		if (drmBlockedCount > 0) {
+			dialogs.alert(
+				`[Seq #${seqNum}] ${courseName}: Found ${missingItems.length} missing files, but ${drmBlockedCount} file(s) are DRM Protected and cannot be downloaded.\n\nCheck Logger tab for details!`,
+				function () {}
+			);
+		} else {
+			appendLog(
+				`Starting Missing Files Download [Seq #${seqNum}]`,
+				`Course: ${courseName}\n- Found ${missingItems.length} missing files out of ${totalItemsChecked} total items.\n- Starting download immediately...`
+			);
+		}
+
+		// Force immediate download execution
+		$course.data("isPaused", false);
+		$course.data("isQueued", false);
+		$course.data("isDownloading", true);
+		$course.data("isPreparing", false);
+
+		const selectedSubtitle = $course.find('input[name="selectedSubtitle"]').val() || "";
+		prepareDownloading($course, selectedSubtitle);
+	} catch (error) {
+		ui.showProgress($course, false);
+		appendLog("EDOWNLOAD_MISSING", error);
+		$course.find(".status-text-label").html(translate("Failed to download missing files. Check logger for details."));
 	}
 }
 
