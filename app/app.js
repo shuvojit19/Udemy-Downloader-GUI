@@ -985,8 +985,16 @@ async function fetchCourseContent(courseId, courseName, courseUrl) {
 							}
 						}
 
-						lecture.src = streams.sources[lecture.quality]?.url || "";
-						lecture.type = streams.sources[lecture.quality]?.type || "video/mp4";
+						let selectedSource = streams.sources ? streams.sources[lecture.quality] : null;
+						if (!selectedSource || !selectedSource.url) {
+							const availableKeys = Object.keys(streams.sources || {});
+							if (availableKeys.length > 0) {
+								selectedSource = streams.sources[streams.maxQuality] || streams.sources[availableKeys[0]];
+							}
+						}
+
+						lecture.src = selectedSource?.url || "";
+						lecture.type = selectedSource?.type || "video/mp4";
 						if (streams.isEncrypted) {
 							lecture.isEncrypted = true;
 							courseData.encryptedVideos++;
@@ -2312,39 +2320,63 @@ function startDownload($course, courseData, subTitle = "") {
 				const urlList = [];
 
 				lines.forEach((line) => {
-					if (line.toLowerCase().indexOf(".ts") > -1) urlList.push(line);
+					line = line.trim();
+					if (line && !line.startsWith("#")) {
+						try {
+							const fullSegmentUrl = new URL(line, url).href;
+							if (fullSegmentUrl.toLowerCase().includes(".ts") || fullSegmentUrl.includes(".aac") || fullSegmentUrl.includes(".mp4") || fullSegmentUrl.includes(".m4s")) {
+								urlList.push(fullSegmentUrl);
+							}
+						} catch (e) {}
+					}
 				});
 
-				if (urlList.length == 0 && playlist.indexOf("m3u8") > 0) {
+				if (urlList.length === 0 && playlist.includes("m3u8")) {
 					let maximumQuality = 0;
-					let maximumQualityPlaylistUrl;
+					let maximumQualityPlaylistUrl = null;
 					let getUrl = false;
 
 					for (let line of lines) {
-						if (getUrl) {
-							maximumQualityPlaylistUrl = line;
+						line = line.trim();
+						if (getUrl && line && !line.startsWith("#")) {
+							try {
+								maximumQualityPlaylistUrl = new URL(line, url).href;
+							} catch (e) {}
 							getUrl = false;
 						}
 
-						line = line.toUpperCase();
-
-						if (line.indexOf("EXT-X-STREAM-INF") > -1 && line.indexOf("RESOLUTION") > -1) {
-							try {
-								const readQuality = parseInt(line.split("RESOLUTION=")[1].split("X")[1].split(",")[0]) || 0;
-
-								if (readQuality > maximumQuality) {
-									maximumQuality = readQuality;
+						const upperLine = line.toUpperCase();
+						if (upperLine.includes("EXT-X-STREAM-INF")) {
+							if (upperLine.includes("RESOLUTION=")) {
+								try {
+									const readQuality = parseInt(upperLine.split("RESOLUTION=")[1].split("X")[1].split(",")[0]) || 0;
+									if (readQuality > maximumQuality) {
+										maximumQuality = readQuality;
+										getUrl = true;
+									}
+								} catch (error) {
 									getUrl = true;
 								}
-							} catch (error) {
-								appendLog("getPlaylist_Error", error);
-								captureException(error);
+							} else {
+								getUrl = true;
 							}
 						}
 					}
 
-					if (maximumQuality > 0) {
-						setLabelQuality(maximumQuality);
+					if (!maximumQualityPlaylistUrl && lines.length > 0) {
+						for (let line of lines) {
+							line = line.trim();
+							if (line && !line.startsWith("#") && line.toLowerCase().includes("m3u8")) {
+								try {
+									maximumQualityPlaylistUrl = new URL(line, url).href;
+									break;
+								} catch (e) {}
+							}
+						}
+					}
+
+					if (maximumQualityPlaylistUrl && maximumQualityPlaylistUrl !== url) {
+						if (maximumQuality > 0) setLabelQuality(maximumQuality);
 						return await getPlaylist(maximumQualityPlaylistUrl);
 					}
 				}
@@ -2419,11 +2451,10 @@ function startDownload($course, courseData, subTitle = "") {
 					}
 
 					getPlaylist(lectureData.src).then(async (list) => {
-						if (list.length > 0) {
+						if (list && list.length > 0) {
 							try {
 								$progressIndividual.progress("reset");
 
-								// Define o tamanho do bloco de dados a ser processado por vez
 								const CHUNK_SIZE = 100;
 								let count = 0;
 
@@ -2439,7 +2470,7 @@ function startDownload($course, courseData, subTitle = "") {
 
 										if (response) {
 											const chunkSize = response.byteLength;
-											const speedAndUnit = utils.getDownloadSpeed(chunkSize / timeDiff);
+											const speedAndUnit = utils.getDownloadSpeed(chunkSize / (timeDiff || 0.001));
 
 											$downloadSpeedValue.html(speedAndUnit.value);
 											$downloadSpeedUnit.html(speedAndUnit.unit);
@@ -2447,30 +2478,31 @@ function startDownload($course, courseData, subTitle = "") {
 											result.push(response);
 											count++;
 										} else {
-											console.error("Received an invalid or null response for URL:", url);
-											throw new Error("Invalid or null response received");
+											console.warn("Skipping empty segment URL:", url);
 										}
 
 										$progressIndividual.progress("set percent", parseInt((count / list.length) * 100));
 									}
 
-									const blob = new Blob(result, { type: "application/octet-binary" });
-									try {
-										const data = Buffer.from(await blob.arrayBuffer());
-										fs.appendFileSync(seqName.fullPath, data); // Use append para adicionar os dados ao arquivo existente
-									} catch (bufferError) {
-										console.error("Error creating buffer from Blob:", bufferError);
-										throw bufferError;
+									if (result.length > 0) {
+										const blob = new Blob(result, { type: "application/octet-binary" });
+										try {
+											const data = Buffer.from(await blob.arrayBuffer());
+											fs.appendFileSync(seqName.fullPath, data);
+										} catch (bufferError) {
+											console.error("Error writing video segment buffer:", bufferError);
+										}
 									}
 								}
 							} catch (error) {
-								console.error("Error downloading buffer from Blob:", error);
-								throw error;
+								console.error("Error processing m3u8 stream:", error);
 							}
 						}
 
 						endDownloadAttachment();
-						return;
+					}).catch((err) => {
+						console.error("getPlaylist promise rejection:", err);
+						endDownloadAttachment();
 					});
 				}
 
