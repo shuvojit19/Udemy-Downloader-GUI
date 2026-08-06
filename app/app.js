@@ -2023,6 +2023,7 @@ function startDownload($course, courseData, subTitle = "") {
 		try {
 			if (downloaded == toDownload) {
 				resetCourse($course, $course.find(".download-success"));
+				performCourseAudit($course);
 				sendNotification(
 					downloadDirectory + "/" + courseName,
 					courseName,
@@ -2252,7 +2253,7 @@ function startDownload($course, courseData, subTitle = "") {
 					try {
 						if (fs.existsSync(lectureSeqName.fullPath + ".mtd")) {
 							dl = downloader.resumeDownload(lectureSeqName.fullPath);
-						} else if (fs.existsSync(lectureSeqName.fullPath)) {
+						} else if (fs.existsSync(lectureSeqName.fullPath) && fs.statSync(lectureSeqName.fullPath).size > 0) {
 							endDownload();
 							return;
 						} else {
@@ -2497,9 +2498,10 @@ function startDownload($course, courseData, subTitle = "") {
 				);
 
 				const skipLecture = Settings.download.type == Settings.DownloadType.OnlyAttachments;
+				const isFileComplete = fs.existsSync(seqName.fullPath) && fs.statSync(seqName.fullPath).size > 0;
 
 				if (lectureType !== "application/x-mpegurl") {
-					if (fs.existsSync(seqName.fullPath) || skipLecture || lectureData.isEncrypted || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
+					if (isFileComplete || skipLecture || lectureData.isEncrypted || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
 						if (!lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.startsWith("http")) {
 							appendLog("Skip Lecture - Invalid or missing URL", `Course: ${courseName}`, `Lecture: ${lectureName}`);
 						}
@@ -2519,7 +2521,7 @@ function startDownload($course, courseData, subTitle = "") {
 
 					dlStart(dl, (lectureType || "").includes("video"), endDownloadAttachment);
 				} else {
-					if (fs.existsSync(seqName.fullPath) || skipLecture || lectureData.isEncrypted || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
+					if (isFileComplete || skipLecture || lectureData.isEncrypted || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
 						if (!lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.startsWith("http")) {
 							appendLog("Skip Lecture - Invalid or missing m3u8 URL", `Course: ${courseName}`, `Lecture: ${lectureName}`);
 						}
