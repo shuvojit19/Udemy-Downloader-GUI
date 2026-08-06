@@ -629,13 +629,15 @@ function updateCourseStatusTags($course, customData = {}) {
 
 	let $tagsContainer = $course.find(".course-status-tags");
 	if (!$tagsContainer.length) {
-		$tagsContainer = $('<div class="course-status-tags" style="margin-top: 8px; margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;"></div>');
+		$tagsContainer = $('<div class="course-status-tags" style="margin-top: 8px; margin-bottom: 4px; display: flex; flex-direction: column; gap: 4px;"></div>');
 		const $content = $course.find(".content");
 		if ($content.find(".download-status").length) {
 			$content.find(".download-status").prepend($tagsContainer);
 		} else {
 			$content.append($tagsContainer);
 		}
+	} else {
+		$tagsContainer.css({ display: "flex", "flex-direction": "column", gap: "4px" });
 	}
 
 	if (customData.verifiedStatus !== undefined) $course.data("verifiedStatus", customData.verifiedStatus);
@@ -653,30 +655,41 @@ function updateCourseStatusTags($course, customData = {}) {
 	const encryptedVideos = Number($course.find('input[name="encryptedvideos"]').val() || 0);
 	const seqNum = Number($course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || 0);
 
-	let tagsHtml = "";
-
+	let baseTags = "";
 	if (seqNum > 0) {
-		tagsHtml += `<span class="ui blue tiny label tag-sequence" style="margin: 0;"><i class="hashtag icon"></i> Seq #${seqNum}</span>`;
+		baseTags += `<span class="ui blue tiny label tag-sequence" style="margin: 0;"><i class="hashtag icon"></i> Seq #${seqNum}</span>`;
 	}
-
 	if (isCompleted) {
 		const dateStr = historyDate ? ` (${historyDate})` : "";
-		tagsHtml += `<span class="ui green tiny label tag-finished" style="margin: 0;"><i class="check circle icon"></i> ${translate("Download Finished")}${dateStr}</span>`;
+		baseTags += `<span class="ui green tiny label tag-finished" style="margin: 0;"><i class="check circle icon"></i> ${translate("Download Finished")}${dateStr}</span>`;
 	}
 
+	let verificationTag = "";
 	if (verifiedStatus === "complete") {
-		tagsHtml += `<span class="ui purple tiny label tag-verified" style="margin: 0;"><i class="shield check icon"></i> Verified (${verifiedDetails || "100% Intact"})</span>`;
+		verificationTag = `<span class="ui purple tiny label tag-verified" style="margin: 0;"><i class="shield check icon"></i> Verified (${verifiedDetails || "100% Intact"})</span>`;
 	} else if (verifiedStatus === "missing") {
-		tagsHtml += `<span class="ui red tiny label tag-verified" style="margin: 0;"><i class="exclamation triangle icon"></i> ${verifiedDetails || "Missing Files"}</span>`;
+		verificationTag = `<span class="ui red tiny label tag-verified" style="margin: 0;"><i class="exclamation triangle icon"></i> ${verifiedDetails || "Missing Files"}</span>`;
 	}
 
+	let drmTag = "";
 	if (drmStatus === "protected" || (encryptedVideos > 0 && !drmStatus)) {
-		tagsHtml += `<span class="ui orange tiny label tag-drm" style="margin: 0;"><i class="lock icon"></i> DRM Protected ${drmDetails ? `(${drmDetails})` : ""}</span>`;
+		drmTag = `<span class="ui orange tiny label tag-drm" style="margin: 0;"><i class="lock icon"></i> DRM Protected ${drmDetails ? `(${drmDetails})` : ""}</span>`;
 	} else if (drmStatus === "free") {
-		tagsHtml += `<span class="ui teal tiny label tag-drm" style="margin: 0;"><i class="unlock icon"></i> DRM Free (100% Downloadable)</span>`;
+		drmTag = `<span class="ui teal tiny label tag-drm" style="margin: 0;"><i class="unlock icon"></i> DRM Free (100% Downloadable)</span>`;
 	}
 
-	$tagsContainer.html(tagsHtml);
+	let rowsHtml = "";
+	if (baseTags) {
+		rowsHtml += `<div class="tags-row base-row" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">${baseTags}</div>`;
+	}
+	if (verificationTag) {
+		rowsHtml += `<div class="tags-row verification-row" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">${verificationTag}</div>`;
+	}
+	if (drmTag) {
+		rowsHtml += `<div class="tags-row drm-row" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">${drmTag}</div>`;
+	}
+
+	$tagsContainer.html(rowsHtml);
 	$course.find(".info-downloaded").hide();
 }
 
