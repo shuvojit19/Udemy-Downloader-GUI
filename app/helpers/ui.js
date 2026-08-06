@@ -72,17 +72,18 @@ const ui = {
 	get actionCardTemplate() {
 		return `
             <div class="ui tiny icon action buttons">
-                <button class="ui basic blue save_m3u button"><i class="save outline icon"></i></button>
+                <button class="ui basic blue save_m3u button" title="Save M3U Playlist"><i class="save outline icon"></i></button>
                 <div style="height: 1px; width: 5px;"></div>
-                <button class="ui basic blue download button"><i class="download icon"></i></button>
-                <button class="ui basic red disabled pause button"><i class="pause icon"></i></button>
-                <button class="ui basic green disabled resume button"><i class="play icon"></i></button>
+                <button class="ui basic blue download button" title="Download Course"><i class="download icon"></i></button>
+                <button class="ui basic red disabled pause button" title="Pause Download"><i class="pause icon"></i></button>
+                <button class="ui basic green disabled resume button" title="Resume Download"><i class="play icon"></i></button>
 
                 <div style="height: 1px; width: 5px;"></div>
 
-                <button class="ui basic yellow open-in-browser button"><i class="desktop icon"></i></button>
-                <button class="ui basic teal open-dir button"><i class="folder open icon"></i></button>
+                <button class="ui basic yellow open-in-browser button" title="Open in Browser"><i class="desktop icon"></i></button>
+                <button class="ui basic teal open-dir button" title="Open Downloads Directory"><i class="folder open icon"></i></button>
                 <button class="ui basic purple verify button" title="Verify Course Files"><i class="shield check icon"></i></button>
+                <button class="ui basic orange check-drm button" title="Check DRM & Encryption Status"><i class="lock icon"></i></button>
             </div>
             <div class="ui horizontal divider"></div>
             <progress class="prepare-downloading" style="width: 100%; display: none;"></progress>

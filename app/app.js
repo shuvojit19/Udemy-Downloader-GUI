@@ -133,6 +133,11 @@ $(".ui.dashboard .content").on("click", ".verify.button", function (e) {
 	verifyCourseDownloads($(this).parents(".course"));
 });
 
+$(".ui.dashboard .content").on("click", ".check-drm.button", function (e) {
+	e.stopImmediatePropagation();
+	checkDrmStatus($(this).parents(".course"));
+});
+
 $(".ui.dashboard .content").on("click", "#clear_logger", clearLogArea);
 
 $(".ui.dashboard .content").on("click", "#save_logger", saveLogFile);
@@ -1572,6 +1577,80 @@ async function verifyCourseDownloads($course) {
 	}
 }
 
+async function checkDrmStatus($course) {
+	const courseId = String($course.attr("course-id") || "").trim();
+	const courseName = $course.find(".coursename").text();
+	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
+
+	if (!courseId) return;
+
+	$course.find(".download-status .label").html(translate("Checking DRM & Encryption status..."));
+	$course.find(".download-status").show();
+	ui.showProgress($course, true);
+
+	let courseData = $course.data("courseData");
+	try {
+		if (!courseData) {
+			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
+			if (!courseData) {
+				$course.find(".download-status .label").html(translate("Failed to fetch course details for DRM check."));
+				ui.showProgress($course, false);
+				return;
+			}
+			$course.data("courseData", courseData);
+		}
+
+		ui.showProgress($course, false);
+
+		let totalLectures = 0;
+		let drmEncryptedCount = 0;
+		let downloadableCount = 0;
+
+		if (courseData.chapters && Array.isArray(courseData.chapters)) {
+			courseData.chapters.forEach((chapter) => {
+				if (chapter.lectures && Array.isArray(chapter.lectures)) {
+					chapter.lectures.forEach((lecture) => {
+						totalLectures++;
+						if (lecture.isEncrypted || (lecture.src && String(lecture.src).includes("encrypted-files"))) {
+							drmEncryptedCount++;
+						} else {
+							downloadableCount++;
+						}
+					});
+				}
+			});
+		}
+
+		$course.find('input[name="encryptedvideos"]').val(drmEncryptedCount);
+		ui.configureEncryptedIcon($course);
+
+		const canDownloadEverything = drmEncryptedCount === 0;
+		const statusTitle = canDownloadEverything ? "No DRM Protection Detected" : "DRM Protection Detected";
+		const statusMessage = `Course: ${courseName}
+- Total Lectures: ${totalLectures}
+- Downloadable Videos: ${downloadableCount}
+- DRM Encrypted Videos: ${drmEncryptedCount}
+
+Can download everything? ${canDownloadEverything ? "YES (100% Downloadable)" : `NO (${drmEncryptedCount} lectures are protected by Udemy DRM encryption)`}`;
+
+		console.log(`[DRM Check] ${statusMessage}`);
+		dialogs.alert(statusMessage, function () {});
+
+		const summaryLabel = canDownloadEverything
+			? `DRM Free (100% Downloadable - ${totalLectures} items)`
+			: `DRM Protected (${drmEncryptedCount}/${totalLectures} items encrypted)`;
+
+		$course.find(".download-status .label").html(summaryLabel).css("color", canDownloadEverything ? "#48ca56" : "#f2711c");
+		$course.find(".download-status").show();
+
+		appendLog("DRM Check", statusMessage);
+	} catch (error) {
+		ui.showProgress($course, false);
+		appendLog("ECHK_DRM", error);
+		$course.find(".download-status .label").html(translate("DRM check failed. Check logger for details."));
+	}
+}
+
 function startDownload($course, courseData, subTitle = "") {
 	const startFn = $course.data("startDownloadFn");
 	const cachedCourseData = $course.data("courseData") || courseData;
@@ -2108,7 +2187,11 @@ function startDownload($course, courseData, subTitle = "") {
 				const vttFile = subtitleSeqName.fullPath.replace(".srt", ".vtt");
 				const vttFileWS = fs.createWriteStream(vttFile).on("finish", function () {
 					const strFileWS = fs.createWriteStream(subtitleSeqName.fullPath).on("finish", function () {
-						fs.unlinkSync(vttFile);
+						try {
+							if (fs.existsSync(vttFile)) {
+								fs.unlinkSync(vttFile);
+							}
+						} catch (e) {}
 						checkAttachment();
 					});
 
