@@ -29,9 +29,9 @@ jobs:
         n=0
         until [ "$n" -ge 3 ]
         do
-           npm ci && break
+           npm install && break
            n=$((n+1))
-           echo "npm ci failed. Retrying... (Attempt $n of 3)"
+           echo "npm install failed. Retrying... (Attempt $n of 3)"
            sleep 15
         done
         if [ "$n" -ge 3 ]; then exit 1; fi
