@@ -1786,12 +1786,14 @@ async function downloadMissingFiles($course) {
 	ui.showProgress($course, true);
 
 	try {
-		const courseData = $course.data("courseData");
+		$course.find(".status-text-label").html(translate("Fetching fresh download links..."));
+		const courseData = await fetchCourseContent(courseId, courseName, courseUrl);
 		if (!courseData) {
-			$course.find(".status-text-label").html(translate("Failed to find course details in memory. Try starting the download normally first."));
+			$course.find(".status-text-label").html(translate("Failed to fetch course details."));
 			ui.showProgress($course, false);
 			return;
 		}
+		$course.data("courseData", courseData);
 
 		const sanitizedCourseName = sanitize(courseData.name.trim());
 		const downloadDirectory = Settings.downloadDirectory();
