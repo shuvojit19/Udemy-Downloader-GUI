@@ -176,14 +176,15 @@ const utils = {
 	 */
 	parseSearchKeyword(rawInput) {
 		if (!rawInput || typeof rawInput !== "string") {
-			return { raw: "", cleanText: "", isInstructor: false, instructorSlug: "", instructorPath: "" };
+			return { raw: "", cleanText: "", isInstructor: false, isCourseUrl: false, instructorSlug: "", instructorPath: "" };
 		}
 		const trimmed = rawInput.trim();
 		if (!trimmed) {
-			return { raw: "", cleanText: "", isInstructor: false, instructorSlug: "", instructorPath: "" };
+			return { raw: "", cleanText: "", isInstructor: false, isCourseUrl: false, instructorSlug: "", instructorPath: "" };
 		}
 
 		let isInstructor = false;
+		let isCourseUrl = false;
 		let instructorSlug = "";
 		let instructorPath = "";
 		let cleanText = trimmed;
@@ -201,6 +202,7 @@ const utils = {
 			instructorPath = `/user/${instructorSlug}`;
 			cleanText = instructorSlug.replace(/-/g, " ");
 		} else if (courseMatch && courseMatch[1]) {
+			isCourseUrl = true;
 			cleanText = decodeURIComponent(courseMatch[1]).replace(/-/g, " ");
 		} else if (trimmed.includes("-") && !trimmed.includes(" ") && (trimmed.startsWith("user/") || !trimmed.includes("/"))) {
 			instructorSlug = trimmed.toLowerCase();
@@ -216,6 +218,7 @@ const utils = {
 			raw: trimmed,
 			cleanText,
 			isInstructor,
+			isCourseUrl,
 			instructorSlug,
 			instructorPath,
 		};

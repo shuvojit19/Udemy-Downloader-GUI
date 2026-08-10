@@ -17,3 +17,16 @@ Uncaught Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007
 Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\AI Engineer Agentic Track The Complete Agent & MCP Course\1. Week 1\22. Day 5 - Context Engineering for AI Agents Memory, Tools and RAG.vtt'
 Uncaught Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\AI Coder Complete Claude Code & Coding Agents Course\2. Week 2 - Vibe Engineering as a professional\18. Day 3 - MCP vs Skills vs Plugins Choosing the Right Claude Code Setup.vtt' at events.js:292:7
 Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\AI Coder Complete Claude Code & Coding Agents Course\2. Week 2 - Vibe Engineering as a professional\18. Day 3 - MCP vs Skills vs Plugins Choosing the Right Claude Code Setup.vtt'
+Uncaught Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\Complete MLOps Bootcamp With 10+ End To End ML Projects\3. Python Prerequisites\17. Import Modules And Packages In Python.vtt' at events.js:292:7
+Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\Complete MLOps Bootcamp With 10+ End To End ML Projects\3. Python Prerequisites\17. Import Modules And Packages In Python.vtt'
+Uncaught Error: Cannot call write after a stream was destroyed at events.js:292:7
+Error [ERR_STREAM_DESTROYED]: Cannot call write after a stream was destroyed
+    at doWrite (_stream_writable.js:399:19)
+    at writeOrBuffer (_stream_writable.js:387:5)
+    at WriteStream.Writable.write (_stream_writable.js:318:11)
+    at IncomingMessage.ondata (_stream_readable.js:716:22)
+    at IncomingMessage.emit (events.js:315:20)
+    at IncomingMessage.Readable.read (_stream_readable.js:505:10)
+    at flow (_stream_readable.js:1005:34)
+    at resume_ (_stream_readable.js:986:3)
+    at processTicksAndRejections (internal/process/task_queues.js:84:21)

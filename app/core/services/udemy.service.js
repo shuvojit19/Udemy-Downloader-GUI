@@ -389,7 +389,7 @@ class UdemyService {
 		}
 
 		try {
-			if (parsed.isInstructor) {
+			if (parsed.isInstructor || parsed.isCourseUrl || searchResults.length === 0) {
 				const allUserCourses = await this.fetchAllUserCourses(isSubscriber, httpTimeout);
 				if (allUserCourses && allUserCourses.length > 0) {
 					const matchedCourses = allUserCourses.filter((course) => this._isCourseMatch(course, parsed));
