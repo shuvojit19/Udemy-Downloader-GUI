@@ -389,18 +389,20 @@ class UdemyService {
 		}
 
 		try {
-			const allUserCourses = await this.fetchAllUserCourses(isSubscriber, httpTimeout);
-			if (allUserCourses && allUserCourses.length > 0) {
-				const matchedCourses = allUserCourses.filter((course) => this._isCourseMatch(course, parsed));
+			if (parsed.isInstructor) {
+				const allUserCourses = await this.fetchAllUserCourses(isSubscriber, httpTimeout);
+				if (allUserCourses && allUserCourses.length > 0) {
+					const matchedCourses = allUserCourses.filter((course) => this._isCourseMatch(course, parsed));
 
-				const seenIds = new Set(searchResults.map((c) => String(c.id)));
-				for (const course of matchedCourses) {
-					if (!seenIds.has(String(course.id))) {
-						seenIds.add(String(course.id));
-						searchResults.push(course);
+					const seenIds = new Set(searchResults.map((c) => String(c.id)));
+					for (const course of matchedCourses) {
+						if (!seenIds.has(String(course.id))) {
+							seenIds.add(String(course.id));
+							searchResults.push(course);
+						}
 					}
+					count = searchResults.length;
 				}
-				count = searchResults.length;
 			}
 		} catch (e) {
 			console.warn("[fetchSearchCourses] Fetching all user courses for instructor matching error:", e.message);

@@ -145,14 +145,7 @@ $(".ui.dashboard .content").on("click", ".verify.button", function (e) {
 	verifyCourseDownloads($course);
 });
 
-$(".ui.dashboard .content").on("click", ".check-drm.button", function (e) {
-	e.stopImmediatePropagation();
-	const $course = $(this).parents(".course");
-	$course.data("drmStatus", "");
-	$course.data("drmDetails", "");
-	updateCourseStatusTags($course, {}); // Clear visual tags immediately
-	checkDrmStatus($course);
-});
+
 
 $(".ui.dashboard .content").on("click", ".download-missing.button, .redownload.button", function (e) {
 	e.stopImmediatePropagation();
@@ -850,6 +843,24 @@ function processDownloadQueue() {
 	sortDownloads();
 }
 
+function setCourseCompletedStatus($course, isCompleted) {
+	const courseId = Number($course.attr("course-id"));
+	$course.attr("course-completed", isCompleted ? "true" : "");
+	$course.data("completed", isCompleted);
+	if (isCompleted) {
+		$course.find(".download-success").show();
+	} else {
+		$course.find(".download-success").hide();
+	}
+
+	if (courseId) {
+		const historyItem = Settings.downloadHistory.find((x) => Number(x.id) === courseId);
+		if (historyItem) historyItem.completed = isCompleted;
+		const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseId);
+		if (savedItem) savedItem.completed = isCompleted;
+	}
+}
+
 function resetCourse($course, $elMessage, autoRetry, courseData, subtitle) {
 	$course.data("isDownloading", false);
 	$course.data("isPreparing", false);
@@ -859,9 +870,9 @@ function resetCourse($course, $elMessage, autoRetry, courseData, subtitle) {
 	$course.find(".download-error").hide();
 
 	if ($elMessage.hasClass("download-success")) {
-		$course.attr("course-completed", true);
+		setCourseCompletedStatus($course, true);
 	} else {
-		$course.attr("course-completed", "");
+		setCourseCompletedStatus($course, false);
 
 		if ($elMessage.hasClass("download-error") && autoRetry && courseData) {
 			if (courseData.errorCount++ < 5) {
@@ -1519,6 +1530,16 @@ async function renderDownloads() {
 }
 
 async function prepareDownloading($course, subtitle) {
+	if ($course.data("isActionLocked")) return;
+	$course.data("isActionLocked", true);
+	try {
+		await _prepareDownloading($course, subtitle);
+	} finally {
+		$course.data("isActionLocked", false);
+	}
+}
+
+async function _prepareDownloading($course, subtitle) {
 	const courseId = $course.attr("course-id");
 	const courseName = $course.find(".coursename").text();
 	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
@@ -1559,13 +1580,8 @@ async function prepareDownloading($course, subtitle) {
 		$downloads.append($downloadItem);
 	}
 
-	$course.attr("course-completed", "");
-	$course.data("completed", false);
-	$course.find(".download-success").hide();
-
-	$downloadItem.attr("course-completed", "");
-	$downloadItem.data("completed", false);
-	$downloadItem.find(".download-success").hide();
+	setCourseCompletedStatus($course, false);
+	setCourseCompletedStatus($downloadItem, false);
 
 	$course.data("isPreparing", true);
 	$downloadItem.data("isPreparing", true);
@@ -1642,7 +1658,7 @@ async function prepareDownloading($course, subtitle) {
 			$course.find(".action.buttons .pause.button").addClass("disabled");
 			$course.find(".action.buttons .resume.button").removeClass("disabled");
 
-			console.log(`[prepareDownloading] Fetched details for course ${courseId}. Queued & Auto-paused (Active: ${activeCount}/${maxConcurrent})`);
+			console.log(`[prepareDownloading] Fetched details for course ${courseId}. Queued & Auto-paused (Active: ${otherActiveCount}/${maxConcurrent})`);
 			sortDownloads();
 			saveDownloads(false);
 		} else {
@@ -1665,6 +1681,16 @@ async function prepareDownloading($course, subtitle) {
 }
 
 async function verifyCourseDownloads($course) {
+	if ($course.data("isActionLocked")) return;
+	$course.data("isActionLocked", true);
+	try {
+		await _verifyCourseDownloads($course);
+	} finally {
+		$course.data("isActionLocked", false);
+	}
+}
+
+async function _verifyCourseDownloads($course) {
 	const courseId = String($course.attr("course-id") || "").trim();
 	const courseName = $course.find(".coursename").text();
 	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
@@ -1736,25 +1762,15 @@ async function verifyCourseDownloads($course) {
 				}
 
 				if (isComplete) {
-					$course.attr("course-completed", "true");
-					$course.data("completed", true);
-					$course.find(".download-success").show();
+					setCourseCompletedStatus($course, true);
 
 					const message = `[Seq #${seqNum}] Course Audit & Verification: ${courseName}\n- DRM Status: ${canDownloadEverything ? "DRM Free (100% Downloadable)" : `${drmEncryptedCount}/${totalLectures} DRM Encrypted`}\n- File Integrity: Verified 100% Complete (${totalItemsChecked} items intact)`;
 					dialogs.alert(message, function () {});
 					appendLog(`Course Audit [Seq #${seqNum}]`, message);
 				} else {
-					$course.attr("course-completed", "");
-					$course.data("completed", false);
-					$course.find(".download-success").hide();
+					setCourseCompletedStatus($course, false);
 
-					const courseIdNum = Number($course.attr("course-id"));
-					if (courseIdNum) {
-						const historyItem = Settings.downloadHistory.find((x) => Number(x.id) === courseIdNum);
-						if (historyItem) historyItem.completed = false;
-						const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseIdNum);
-						if (savedItem) savedItem.completed = false;
-					}
+
 
 					const message = `[Seq #${seqNum}] Course Audit & Verification: ${courseName}\n- DRM Status: ${canDownloadEverything ? "DRM Free (100% Downloadable)" : `${drmEncryptedCount}/${totalLectures} DRM Encrypted`}\n- File Integrity: ${missingItems.length} missing file(s) out of ${totalItemsChecked}.\n\nWould you like to re-download missing files now?`;
 					appendLog(`Course Audit [Seq #${seqNum}]`, message);
@@ -1788,79 +1804,19 @@ async function verifyCourseDownloads($course) {
 	}
 }
 
-async function checkDrmStatus($course) {
-	const courseId = String($course.attr("course-id") || "").trim();
-	const courseName = $course.find(".coursename").text();
-	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
-	const seqNum = $course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || "N/A";
 
-	if (!courseId) return;
 
-	$course.find(".status-text-label").html(translate("Checking DRM status..."));
-	$course.find(".download-status").show();
-	ui.showProgress($course, true);
-
-	let courseData = $course.data("courseData");
+async function downloadMissingFiles($course) {
+	if ($course.data("isActionLocked")) return;
+	$course.data("isActionLocked", true);
 	try {
-		if (!courseData) {
-			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
-			if (!courseData) {
-				$course.find(".status-text-label").html(translate("Failed to fetch course details for DRM check."));
-				ui.showProgress($course, false);
-				return;
-			}
-			$course.data("courseData", courseData);
-		}
-
-		ui.showProgress($course, false);
-
-		let totalLectures = 0;
-		let drmEncryptedCount = 0;
-		let downloadableCount = 0;
-
-		if (courseData.chapters && Array.isArray(courseData.chapters)) {
-			courseData.chapters.forEach((chapter) => {
-				if (chapter.lectures && Array.isArray(chapter.lectures)) {
-					chapter.lectures.forEach((lecture) => {
-						totalLectures++;
-						if (lecture.isEncrypted || (lecture.src && String(lecture.src).includes("encrypted-files"))) {
-							drmEncryptedCount++;
-						} else {
-							downloadableCount++;
-						}
-					});
-				}
-			});
-		}
-
-		$course.find('input[name="encryptedvideos"]').val(drmEncryptedCount);
-		ui.configureEncryptedIcon($course);
-
-		const canDownloadEverything = drmEncryptedCount === 0;
-		updateCourseStatusTags($course, {
-			drmStatus: canDownloadEverything ? "free" : "protected",
-			drmDetails: canDownloadEverything ? "100% Downloadable" : `${drmEncryptedCount}/${totalLectures} encrypted`,
-		});
-		saveDownloads(false);
-
-		const statusMessage = `[Seq #${seqNum}] DRM Protection Status: ${courseName}
-- Total Lectures: ${totalLectures}
-- Downloadable Videos: ${downloadableCount}
-- DRM Encrypted Videos: ${drmEncryptedCount}
-
-Can download everything? ${canDownloadEverything ? "YES (100% Downloadable)" : `NO (${drmEncryptedCount} lectures protected by DRM encryption)`}`;
-
-		dialogs.alert(statusMessage, function () {});
-		appendLog(`DRM Check [Seq #${seqNum}]`, statusMessage);
-		$course.find(".download-status").show();
-	} catch (error) {
-		ui.showProgress($course, false);
-		appendLog("ECHK_DRM", error);
-		$course.find(".status-text-label").html(translate("DRM check failed. Check logger for details."));
+		await _downloadMissingFiles($course);
+	} finally {
+		$course.data("isActionLocked", false);
 	}
 }
 
-async function downloadMissingFiles($course) {
+async function _downloadMissingFiles($course) {
 	const courseId = String($course.attr("course-id") || "").trim();
 	const courseName = $course.find(".coursename").text();
 	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
@@ -1954,17 +1910,9 @@ async function downloadMissingFiles($course) {
 		ui.showProgress($course, false);
 
 		if (missingItems.length === 0) {
-			$course.attr("course-completed", "true");
-			$course.data("completed", true);
-			$course.find(".download-success").show();
+			setCourseCompletedStatus($course, true);
 
-			const courseIdNum = Number(courseId);
-			if (courseIdNum) {
-				const historyItem = Settings.downloadHistory.find((x) => Number(x.id) === courseIdNum);
-				if (historyItem) historyItem.completed = true;
-				const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseIdNum);
-				if (savedItem) savedItem.completed = true;
-			}
+
 			updateCourseStatusTags($course, {
 				verifiedStatus: "complete",
 				verifiedDetails: `${totalItemsChecked} items intact`,
@@ -2008,9 +1956,7 @@ async function downloadMissingFiles($course) {
 		}
 
 		// Force immediate download execution: clear completed state & stale cache!
-		$course.attr("course-completed", "");
-		$course.data("completed", false);
-		$course.find(".download-success").hide();
+		setCourseCompletedStatus($course, false);
 		$course.data("isPaused", false);
 		$course.data("isQueued", false);
 		$course.data("isDownloading", true);
@@ -2020,13 +1966,7 @@ async function downloadMissingFiles($course) {
 			delete courseData.fetchedAt;
 		}
 
-		const courseIdNum = Number(courseId);
-		if (courseIdNum) {
-			const historyItem = Settings.downloadHistory.find((x) => Number(x.id) === courseIdNum);
-			if (historyItem) historyItem.completed = false;
-			const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseIdNum);
-			if (savedItem) savedItem.completed = false;
-		}
+
 		saveDownloads(false);
 
 		const selectedSubtitle = $course.find('input[name="selectedSubtitle"]').val() || "";

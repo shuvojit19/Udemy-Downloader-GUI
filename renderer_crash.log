@@ -1,0 +1,19 @@
+Uncaught Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Udemy Courses\Mastering Data Structures & Algorithms using C and C++\10. Sparse Matrix and Polynomial Representation\4. Let's Code to Create Sparse Matrix.vtt' at events.js:292:7
+Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Udemy Courses\Mastering Data Structures & Algorithms using C and C++\10. Sparse Matrix and Polynomial Representation\4. Let's Code to Create Sparse Matrix.vtt'
+Uncaught Error: Cannot call write after a stream was destroyed at events.js:292:7
+Error [ERR_STREAM_DESTROYED]: Cannot call write after a stream was destroyed
+    at doWrite (_stream_writable.js:399:19)
+    at writeOrBuffer (_stream_writable.js:387:5)
+    at WriteStream.Writable.write (_stream_writable.js:318:11)
+    at IncomingMessage.ondata (_stream_readable.js:716:22)
+    at IncomingMessage.emit (events.js:315:20)
+    at IncomingMessage.Readable.read (_stream_readable.js:505:10)
+    at flow (_stream_readable.js:1005:34)
+    at resume_ (_stream_readable.js:986:3)
+    at processTicksAndRejections (internal/process/task_queues.js:84:21)
+Uncaught Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\AI Engineer Production Track Deploy LLMs & Agents at Scale\1. Week 1\4. Your Path to Becoming a Proficient AI Engineer.vtt' at events.js:292:7
+Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\AI Engineer Production Track Deploy LLMs & Agents at Scale\1. Week 1\4. Your Path to Becoming a Proficient AI Engineer.vtt'
+Uncaught Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\AI Engineer Agentic Track The Complete Agent & MCP Course\1. Week 1\22. Day 5 - Context Engineering for AI Agents Memory, Tools and RAG.vtt' at events.js:292:7
+Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\AI Engineer Agentic Track The Complete Agent & MCP Course\1. Week 1\22. Day 5 - Context Engineering for AI Agents Memory, Tools and RAG.vtt'
+Uncaught Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\AI Coder Complete Claude Code & Coding Agents Course\2. Week 2 - Vibe Engineering as a professional\18. Day 3 - MCP vs Skills vs Plugins Choosing the Right Claude Code Setup.vtt' at events.js:292:7
+Error: ENOENT: no such file or directory, open 'C:\Users\smcloudtest007\Downloads\Ed Donner\AI Coder Complete Claude Code & Coding Agents Course\2. Week 2 - Vibe Engineering as a professional\18. Day 3 - MCP vs Skills vs Plugins Choosing the Right Claude Code Setup.vtt'
