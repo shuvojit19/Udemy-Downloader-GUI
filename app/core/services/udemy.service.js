@@ -253,165 +253,35 @@ class UdemyService {
 
 
 
-	async fetchAllUserCourses(isSubscriber = false, httpTimeout = this.#timeout) {
-		const cacheKey = `all_user_courses_${isSubscriber}`;
-		const cached = this.#cache.get(cacheKey);
-		if (cached) {
-			return cached;
-		}
-
-		let allCourses = [];
-		const fetchPages = async (baseUrl) => {
-			let url = `${baseUrl}?page_size=100&ordering=-last_accessed`;
-			let hasNext = true;
-			let pageCount = 0;
-			const maxPages = 50; // fetch up to 5000 courses
-
-			while (hasNext && pageCount < maxPages) {
-				pageCount++;
-				try {
-					const data = await this.#fetchUrl(url, "GET", httpTimeout);
-					if (data && Array.isArray(data.results)) {
-						allCourses.push(...data.results);
-					}
-					if (data && data.next) {
-						url = data.next;
-					} else {
-						hasNext = false;
-					}
-				} catch (e) {
-					console.warn(`[fetchAllUserCourses] Error fetching page ${pageCount}:`, e.message);
-					hasNext = false;
-				}
-			}
-		};
-
-		if (isSubscriber) {
-			await Promise.all([
-				fetchPages(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`),
-				fetchPages(`${this.#urlBase}/api-2.0${this.#URL_COURSES_ENROLL}`),
-			]);
-		} else {
-			await fetchPages(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`);
-		}
-
-		const uniqueMap = new Map();
-		for (const course of allCourses) {
-			if (course && course.id) {
-				uniqueMap.set(String(course.id), course);
-			}
-		}
-		const uniqueCourses = Array.from(uniqueMap.values());
-		this.#cache.set(cacheKey, uniqueCourses, 300); // 5 min TTL
-		return uniqueCourses;
-	}
-
-	_isCourseMatch(course, parsed) {
-		if (!course) return false;
-
-		const { raw, cleanText, isInstructor, instructorSlug, instructorPath } = parsed;
-		
-		// Create highly stripped strings (only a-z0-9) for bulletproof matching
-		const highlyStripped = (str) => (str || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-
-		const cleanAlpha = highlyStripped(cleanText);
-		const rawAlpha = highlyStripped(raw);
-		const slugAlpha = highlyStripped(instructorSlug);
-
-		const titleAlpha = highlyStripped(course.title || course.name);
-		const urlAlpha = highlyStripped(course.url);
-
-		if (cleanAlpha && titleAlpha.includes(cleanAlpha)) return true;
-		if (rawAlpha && titleAlpha.includes(rawAlpha)) return true;
-		if (slugAlpha && titleAlpha.includes(slugAlpha)) return true;
-
-		if (cleanAlpha && urlAlpha.includes(cleanAlpha)) return true;
-		if (slugAlpha && urlAlpha.includes(slugAlpha)) return true;
-
-		const instructors = course.visible_instructors || course.instructors || [];
-		for (const inst of instructors) {
-			const instTitleAlpha = highlyStripped(inst.title || inst.display_name || inst.name);
-			const instUrlAlpha = highlyStripped(inst.url);
-
-			if (slugAlpha && instUrlAlpha.includes(slugAlpha)) return true;
-			if (slugAlpha && instUrlAlpha.includes(instructorPath ? highlyStripped(instructorPath) : "")) return true;
-
-			if (cleanAlpha && (instTitleAlpha.includes(cleanAlpha) || cleanAlpha.includes(instTitleAlpha))) return true;
-			if (rawAlpha && instTitleAlpha.includes(rawAlpha)) return true;
-		}
-
-		return false;
-	}
-
 	async fetchSearchCourses(keyword, pageSize, isSubscriber, httpTimeout = this.#timeout) {
-		if (!keyword || !keyword.trim()) {
+		if (!keyword) {
 			return await this.fetchCourses(pageSize, isSubscriber, httpTimeout);
 		}
 
 		pageSize = Math.max(pageSize, 10);
-		
-		// Parse search keyword to handle URLs, slugs, and normal text
-		const parsed = utils.parseSearchKeyword(keyword);
-		const searchKeyword = parsed.cleanText || parsed.raw;
 
-		const param = `page=1&ordering=title&fields[user]=job_title&page_size=${pageSize}&search=${encodeURIComponent(searchKeyword)}`;
-		const url = `${this.#URL_COURSES}?${param}`;
-		const urlEnroll = `${this.#URL_COURSES_ENROLL}?${param}`;
+		const param = `page=1&ordering=title&fields[user]=job_title&page_size=${pageSize}&search=${keyword}`;
+        const url = `${this.#URL_COURSES}?${param}`;
+        const urlEnroll = `${this.#URL_COURSES_ENROLL}?${param}`;
 
-		let searchResults = [];
-		let next = null;
-		let previous = null;
-		let count = 0;
+        if (isSubscriber) {
+            const [courses, enrolledCourses] = await Promise.all([
+                this.#fetchEndpoint(url, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null })),
+                this.#fetchEndpoint(urlEnroll, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null }))
+            ]);
 
-		try {
-			if (isSubscriber) {
-				const [courses, enrolledCourses] = await Promise.all([
-					this.#fetchEndpoint(url, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null })),
-					this.#fetchEndpoint(urlEnroll, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null }))
-				]);
+            const next = [courses.next, enrolledCourses.next].filter((n) => n !== null);
+            const previous = [courses.previous, enrolledCourses.previous].filter((p) => p !== null);
 
-				const nextArr = [courses.next, enrolledCourses.next].filter((n) => n !== null);
-				const previousArr = [courses.previous, enrolledCourses.previous].filter((p) => p !== null);
+            return {
+                count: courses.count + enrolledCourses.count,
+                next: next.length > 0 ? next : null,
+                previous: previous.length > 0 ? previous : null,
+                results: [...courses.results, ...enrolledCourses.results]
+            }
+        }
 
-				searchResults = [...(courses.results || []), ...(enrolledCourses.results || [])];
-				count = (courses.count || 0) + (enrolledCourses.count || 0);
-				next = nextArr.length > 0 ? nextArr : null;
-				previous = previousArr.length > 0 ? previousArr : null;
-			} else {
-				const courses = await this.#fetchEndpoint(url, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null }));
-				searchResults = courses.results || [];
-				count = courses.count || 0;
-				next = courses.next;
-				previous = courses.previous;
-			}
-		} catch (e) {
-			console.warn("[fetchSearchCourses] Title search query returned error:", e.message);
-		}
-
-		try {
-			const allUserCourses = await this.fetchAllUserCourses(isSubscriber, httpTimeout);
-			if (allUserCourses && allUserCourses.length > 0) {
-				const matchedCourses = allUserCourses.filter((course) => this._isCourseMatch(course, parsed));
-
-				const seenIds = new Set(searchResults.map((c) => String(c.id)));
-				for (const course of matchedCourses) {
-					if (!seenIds.has(String(course.id))) {
-						seenIds.add(String(course.id));
-						searchResults.unshift(course);
-					}
-				}
-				count = searchResults.length;
-			}
-		} catch (e) {
-			console.warn("[fetchSearchCourses] Fetching all user courses for instructor matching error:", e.message);
-		}
-
-		return {
-			count: count || searchResults.length,
-			next: Array.isArray(next) && next.length === 0 ? null : next,
-			previous: Array.isArray(previous) && previous.length === 0 ? null : previous,
-			results: searchResults,
-		};
+		return await this.#fetchEndpoint(url, "GET", httpTimeout);
 	}
 
 	async fetchCourses(pageSize = 30, isSubscriber = false, httpTimeout = this.#timeout) {
