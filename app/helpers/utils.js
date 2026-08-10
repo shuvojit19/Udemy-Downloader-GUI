@@ -203,7 +203,9 @@ const utils = {
 			cleanText = instructorSlug.replace(/-/g, " ");
 		} else if (courseMatch && courseMatch[1]) {
 			isCourseUrl = true;
-			cleanText = decodeURIComponent(courseMatch[1]).replace(/-/g, " ");
+			const decoded = decodeURIComponent(courseMatch[1]);
+			cleanText = decoded.replace(/-/g, " ");
+			instructorSlug = decoded.toLowerCase();
 		} else if (trimmed.includes("-") && !trimmed.includes(" ") && (trimmed.startsWith("user/") || !trimmed.includes("/"))) {
 			instructorSlug = trimmed.toLowerCase();
 			instructorPath = `/user/${instructorSlug}`;

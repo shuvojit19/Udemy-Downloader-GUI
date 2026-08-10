@@ -263,7 +263,7 @@ class UdemyService {
 			let url = `${baseUrl}?page_size=100&ordering=-last_accessed`;
 			let hasNext = true;
 			let pageCount = 0;
-			const maxPages = 10; // fetch up to 1000 courses
+			const maxPages = 50; // fetch up to 5000 courses
 
 			while (hasNext && pageCount < maxPages) {
 				pageCount++;
@@ -397,7 +397,7 @@ class UdemyService {
 				for (const course of matchedCourses) {
 					if (!seenIds.has(String(course.id))) {
 						seenIds.add(String(course.id));
-						searchResults.push(course);
+						searchResults.unshift(course);
 					}
 				}
 				count = searchResults.length;
