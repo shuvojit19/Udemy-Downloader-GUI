@@ -1653,84 +1653,127 @@ async function prepareDownloading($course, subtitle) {
 }
 
 async function verifyCourseDownloads($course) {
+	const courseId = String($course.attr("course-id") || "").trim();
+	const courseName = $course.find(".coursename").text();
+	const courseUrl = `https://${Settings.subDomain}.udemy.com${$course.attr("course-url")}`;
+	const seqNum = $course.find('input[name="sequence-number"]').val() || $course.data("sequenceNumber") || "N/A";
+
 	$course.find(".download-success").hide();
 	$course.find(".download-error").hide();
 	$course.find(".course-encrypted").hide();
 
-	$course.find(".status-text-label").html(translate("Verifying course files..."));
+	$course.find(".status-text-label").html(translate("Auditing DRM & verifying course files..."));
 	$course.find(".download-status").show();
 	ui.showProgress($course, true);
 
-	await VerificationEngine.verifyCourseDownloads($course, {
-		onStart: () => {},
-		onComplete: ({ totalItemsChecked, missingItems, isComplete, intactCount, courseName, seqNum }) => {
-			ui.showProgress($course, false);
-
-			updateCourseStatusTags($course, {
-				verifiedStatus: isComplete ? "complete" : "missing",
-				verifiedDetails: isComplete ? `${totalItemsChecked} items intact` : `Missing ${missingItems.length} files`,
-			});
-
-			if (totalItemsChecked > 0) {
-				const $combinedProgress = $course.find(".combined.progress");
-				$combinedProgress.progress({
-					total: totalItemsChecked,
-					value: intactCount,
-					text: {
-						active: `${translate("Downloaded")} {value} ${translate("out of")} {total} ${translate("items")}`,
-					},
-				});
-				$combinedProgress.progress("set percent", parseInt((intactCount / totalItemsChecked) * 100));
-				$combinedProgress.show();
+	let courseData = $course.data("courseData");
+	try {
+		if (!courseData) {
+			courseData = await fetchCourseContent(courseId, courseName, courseUrl);
+			if (courseData) {
+				$course.data("courseData", courseData);
 			}
+		}
 
-			if (isComplete) {
-				$course.attr("course-completed", "true");
-				$course.data("completed", true);
-				$course.find(".download-success").show();
+		let totalLectures = 0;
+		let drmEncryptedCount = 0;
+		let downloadableCount = 0;
 
-				const message = `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: Verified 100% Complete (${totalItemsChecked} items intact)`;
-				dialogs.alert(message, function () {});
-				appendLog(`Course Verification [Seq #${seqNum}]`, message);
-			} else {
-				$course.attr("course-completed", "");
-				$course.data("completed", false);
-				$course.find(".download-success").hide();
+		if (courseData && courseData.chapters && Array.isArray(courseData.chapters)) {
+			courseData.chapters.forEach((chapter) => {
+				if (chapter.lectures && Array.isArray(chapter.lectures)) {
+					chapter.lectures.forEach((lecture) => {
+						totalLectures++;
+						if (lecture.isEncrypted || (lecture.src && String(lecture.src).includes("encrypted-files"))) {
+							drmEncryptedCount++;
+						} else {
+							downloadableCount++;
+						}
+					});
+				}
+			});
+			$course.find('input[name="encryptedvideos"]').val(drmEncryptedCount);
+			ui.configureEncryptedIcon($course);
+		}
 
-				const courseIdNum = Number($course.attr("course-id"));
-				if (courseIdNum) {
-					const historyItem = Settings.downloadHistory.find((x) => Number(x.id) === courseIdNum);
-					if (historyItem) historyItem.completed = false;
-					const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseIdNum);
-					if (savedItem) savedItem.completed = false;
+		const canDownloadEverything = drmEncryptedCount === 0;
+
+		await VerificationEngine.verifyCourseDownloads($course, {
+			onStart: () => {},
+			onComplete: ({ totalItemsChecked, missingItems, isComplete, intactCount, courseName, seqNum }) => {
+				ui.showProgress($course, false);
+
+				updateCourseStatusTags($course, {
+					drmStatus: canDownloadEverything ? "free" : "protected",
+					drmDetails: canDownloadEverything ? "100% Downloadable" : `${drmEncryptedCount}/${totalLectures} encrypted`,
+					verifiedStatus: isComplete ? "complete" : "missing",
+					verifiedDetails: isComplete ? `${totalItemsChecked} items intact` : `Missing ${missingItems.length} files`,
+				});
+
+				if (totalItemsChecked > 0) {
+					const $combinedProgress = $course.find(".combined.progress");
+					$combinedProgress.progress({
+						total: totalItemsChecked,
+						value: intactCount,
+						text: {
+							active: `${translate("Downloaded")} {value} ${translate("out of")} {total} ${translate("items")}`,
+						},
+					});
+					$combinedProgress.progress("set percent", parseInt((intactCount / totalItemsChecked) * 100));
+					$combinedProgress.show();
 				}
 
-				const message = `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: ${missingItems.length} missing file(s) detected out of ${totalItemsChecked}.\n\nWould you like to re-download the missing files now?`;
-				appendLog(`Course Verification [Seq #${seqNum}]`, message);
+				if (isComplete) {
+					$course.attr("course-completed", "true");
+					$course.data("completed", true);
+					$course.find(".download-success").show();
 
-				dialogs.confirm(message, (ok) => {
-					if (ok) {
-						downloadMissingFiles($course);
+					const message = `[Seq #${seqNum}] Course Audit & Verification: ${courseName}\n- DRM Status: ${canDownloadEverything ? "DRM Free (100% Downloadable)" : `${drmEncryptedCount}/${totalLectures} DRM Encrypted`}\n- File Integrity: Verified 100% Complete (${totalItemsChecked} items intact)`;
+					dialogs.alert(message, function () {});
+					appendLog(`Course Audit [Seq #${seqNum}]`, message);
+				} else {
+					$course.attr("course-completed", "");
+					$course.data("completed", false);
+					$course.find(".download-success").hide();
+
+					const courseIdNum = Number($course.attr("course-id"));
+					if (courseIdNum) {
+						const historyItem = Settings.downloadHistory.find((x) => Number(x.id) === courseIdNum);
+						if (historyItem) historyItem.completed = false;
+						const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseIdNum);
+						if (savedItem) savedItem.completed = false;
 					}
-				});
-			}
 
-			updateCourseStatusTags($course);
-			saveDownloads(false);
-			$course.find(".download-status").show();
-		},
-		onError: (errorMsg, seqNum) => {
-			ui.showProgress($course, false);
-			
-			if (typeof errorMsg === 'string') {
-				dialogs.alert(errorMsg);
-			} else {
-				appendLog("EVERIFY_COURSE", errorMsg);
-			}
-			
-			$course.find(".download-status .status-text-label").html(translate("Verification failed. Check logger for details."));
-		}
-	});
+					const message = `[Seq #${seqNum}] Course Audit & Verification: ${courseName}\n- DRM Status: ${canDownloadEverything ? "DRM Free (100% Downloadable)" : `${drmEncryptedCount}/${totalLectures} DRM Encrypted`}\n- File Integrity: ${missingItems.length} missing file(s) out of ${totalItemsChecked}.\n\nWould you like to re-download missing files now?`;
+					appendLog(`Course Audit [Seq #${seqNum}]`, message);
+
+					dialogs.confirm(message, (ok) => {
+						if (ok) {
+							downloadMissingFiles($course);
+						}
+					});
+				}
+
+				updateCourseStatusTags($course);
+				saveDownloads(false);
+				$course.find(".download-status").show();
+			},
+			onError: (errorMsg, seqNum) => {
+				ui.showProgress($course, false);
+
+				if (typeof errorMsg === "string") {
+					dialogs.alert(errorMsg);
+				} else {
+					appendLog("EAUDIT_COURSE", errorMsg);
+				}
+
+				$course.find(".download-status .status-text-label").html(translate("Audit & verification failed. Check logger."));
+			},
+		});
+	} catch (err) {
+		ui.showProgress($course, false);
+		appendLog("EAUDIT_COURSE", err);
+	}
 }
 
 async function checkDrmStatus($course) {

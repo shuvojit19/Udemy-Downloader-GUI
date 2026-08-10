@@ -82,8 +82,7 @@ const ui = {
 
                 <button class="ui basic yellow open-in-browser button" title="Open in Browser"><i class="desktop icon"></i></button>
                 <button class="ui basic teal open-dir button" title="Open Downloads Directory"><i class="folder open icon"></i></button>
-                <button class="ui basic purple verify button" title="Verify Course Files"><i class="shield check icon"></i></button>
-                <button class="ui basic orange check-drm button" title="Check DRM & Encryption Status"><i class="lock icon"></i></button>
+                <button class="ui basic purple verify button" title="Audit & Verify (Check DRM & Missing Files)"><i class="shield check icon"></i> Audit & Verify</button>
                 <button class="ui basic orange redownload button" title="Redownload (Check Missing & Resume)"><i class="redo icon"></i> Redownload</button>
                 <button class="ui basic red download-missing button" title="Download Missing Files Immediately"><i class="download icon"></i></button>
             </div>
