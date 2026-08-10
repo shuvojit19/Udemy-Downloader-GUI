@@ -154,7 +154,7 @@ $(".ui.dashboard .content").on("click", ".check-drm.button", function (e) {
 	checkDrmStatus($course);
 });
 
-$(".ui.dashboard .content").on("click", ".download-missing.button", function (e) {
+$(".ui.dashboard .content").on("click", ".download-missing.button, .redownload.button", function (e) {
 	e.stopImmediatePropagation();
 	downloadMissingFiles($(this).parents(".course"));
 });
@@ -1899,11 +1899,23 @@ async function downloadMissingFiles($course) {
 		ui.showProgress($course, false);
 
 		if (missingItems.length === 0) {
+			$course.attr("course-completed", "true");
+			$course.data("completed", true);
+			$course.find(".download-success").show();
+
+			const courseIdNum = Number(courseId);
+			if (courseIdNum) {
+				const historyItem = Settings.downloadHistory.find((x) => Number(x.id) === courseIdNum);
+				if (historyItem) historyItem.completed = true;
+				const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseIdNum);
+				if (savedItem) savedItem.completed = true;
+			}
 			updateCourseStatusTags($course, {
 				verifiedStatus: "complete",
 				verifiedDetails: `${totalItemsChecked} items intact`,
 			});
-			dialogs.alert(`[Seq #${seqNum}] ${courseName}: All ${totalItemsChecked} files are 100% intact! No missing files to download.`, function () {});
+			saveDownloads(false);
+			dialogs.alert(`[Seq #${seqNum}] ${courseName}: All ${totalItemsChecked} files are 100% intact! Download Finished.`, function () {});
 			appendLog(`Download Missing Files [Seq #${seqNum}]`, `${courseName}: All ${totalItemsChecked} items are intact.`);
 			return;
 		}
