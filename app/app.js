@@ -1547,6 +1547,14 @@ async function prepareDownloading($course, subtitle) {
 		$downloads.append($downloadItem);
 	}
 
+	$course.attr("course-completed", "");
+	$course.data("completed", false);
+	$course.find(".download-success").hide();
+
+	$downloadItem.attr("course-completed", "");
+	$downloadItem.data("completed", false);
+	$downloadItem.find(".download-success").hide();
+
 	$course.data("isPreparing", true);
 	$downloadItem.data("isPreparing", true);
 	$downloadItem.data("isQueued", false);
@@ -1676,18 +1684,35 @@ async function verifyCourseDownloads($course) {
 				$combinedProgress.show();
 			}
 
-			const message = isComplete
-				? `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: Verified 100% Complete (${totalItemsChecked} items intact)`
-				: `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: ${missingItems.length} missing items detected out of ${totalItemsChecked}`;
-
-			dialogs.alert(message, function () {});
-			appendLog(`Course Verification [Seq #${seqNum}]`, message);
-
 			if (isComplete) {
 				$course.attr("course-completed", "true");
 				$course.data("completed", true);
 				$course.find(".download-success").show();
-				saveDownloads(false);
+
+				const message = `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: Verified 100% Complete (${totalItemsChecked} items intact)`;
+				dialogs.alert(message, function () {});
+				appendLog(`Course Verification [Seq #${seqNum}]`, message);
+			} else {
+				$course.attr("course-completed", "");
+				$course.data("completed", false);
+				$course.find(".download-success").hide();
+
+				const courseIdNum = Number($course.attr("course-id"));
+				if (courseIdNum) {
+					const historyItem = Settings.downloadHistory.find((x) => Number(x.id) === courseIdNum);
+					if (historyItem) historyItem.completed = false;
+					const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseIdNum);
+					if (savedItem) savedItem.completed = false;
+				}
+
+				const message = `[Seq #${seqNum}] Course Verification: ${courseName}\n- Status: ${missingItems.length} missing file(s) detected out of ${totalItemsChecked}.\n\nWould you like to re-download the missing files now?`;
+				appendLog(`Course Verification [Seq #${seqNum}]`, message);
+
+				dialogs.confirm(message, (ok) => {
+					if (ok) {
+						downloadMissingFiles($course);
+					}
+				});
 			}
 
 			updateCourseStatusTags($course);
@@ -1915,11 +1940,27 @@ async function downloadMissingFiles($course) {
 			);
 		}
 
-		// Force immediate download execution
+		// Force immediate download execution: clear completed state & stale cache!
+		$course.attr("course-completed", "");
+		$course.data("completed", false);
+		$course.find(".download-success").hide();
 		$course.data("isPaused", false);
 		$course.data("isQueued", false);
 		$course.data("isDownloading", true);
 		$course.data("isPreparing", false);
+
+		if (courseData) {
+			delete courseData.fetchedAt;
+		}
+
+		const courseIdNum = Number(courseId);
+		if (courseIdNum) {
+			const historyItem = Settings.downloadHistory.find((x) => Number(x.id) === courseIdNum);
+			if (historyItem) historyItem.completed = false;
+			const savedItem = Settings.downloadedCourses.find((x) => Number(x.id) === courseIdNum);
+			if (savedItem) savedItem.completed = false;
+		}
+		saveDownloads(false);
 
 		const selectedSubtitle = $course.find('input[name="selectedSubtitle"]').val() || "";
 		prepareDownloading($course, selectedSubtitle);
