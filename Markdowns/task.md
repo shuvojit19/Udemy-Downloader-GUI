@@ -1,0 +1,4 @@
+- [x] Add `fetchAllUserCourses` back to `udemy.service.js` with `maxPages = 50`.
+- [x] Add `_isCourseMatch` back with robust fuzzy matching (stripping non-alphanumerics).
+- [x] Update `fetchSearchCourses` to perform the local fallback and `unshift` exact matches.
+- [x] Commit changes.
