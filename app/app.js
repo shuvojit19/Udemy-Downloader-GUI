@@ -699,14 +699,26 @@ function updateCourseStatusTags($course, customData = {}) {
 	$course.find(".info-downloaded").hide();
 }
 
-function getActiveDownloadCount() {
+function getActiveDownloadCount(excludeCourseId = null) {
 	let activeCount = 0;
 	const $downloads = $(".ui.downloads.section .ui.courses.items .ui.course.item");
+	const excludeStr = excludeCourseId ? String(excludeCourseId).trim() : null;
+
 	$downloads.each((_index, element) => {
 		const $item = $(element);
-		const isDownloading = $item.data("isDownloading") === true || ($item.find(".download-status").is(":visible") && $item.find(".pause.button").is(":visible") && !$item.find(".pause.button").hasClass("disabled"));
-		const isPreparing = $item.data("isPreparing") === true;
-		if (isDownloading || isPreparing) {
+		const itemId = String($item.attr("course-id") || "").trim();
+		if (excludeStr && itemId === excludeStr) {
+			return;
+		}
+
+		const isCompleted = $item.attr("course-completed") === "true" || $item.find(".download-success").is(":visible");
+		const isError = $item.find(".download-error").is(":visible") || $item.find(".course-encrypted").is(":visible");
+		const isUserPaused = $item.data("isPaused") === true;
+
+		const isDownloading = ($item.data("isDownloading") === true || $item.data("isPreparing") === true) ||
+			($item.find(".download-status").is(":visible") && $item.find(".pause.button").is(":visible") && !$item.find(".pause.button").hasClass("disabled"));
+
+		if (isDownloading && !isCompleted && !isError && !isUserPaused) {
 			activeCount++;
 		}
 	});
@@ -1604,10 +1616,10 @@ async function prepareDownloading($course, subtitle) {
 
 		$downloadItem.data("startDownloadFn", () => startDirectDownload(defaultSubtitle));
 
-		const activeCount = getActiveDownloadCount();
+		const otherActiveCount = getActiveDownloadCount(courseId);
 		const maxConcurrent = Settings.download.maxConcurrentDownloads || 4;
 
-		if (activeCount >= maxConcurrent) {
+		if (otherActiveCount >= maxConcurrent) {
 			// Auto-pause and queue in Downloads section with all details pre-fetched!
 			$course.data("isPreparing", false);
 			$downloadItem.data("isPreparing", false);
