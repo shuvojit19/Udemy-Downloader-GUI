@@ -248,40 +248,170 @@ class UdemyService {
 
 	async fetchProfile(accessToken, httpTimeout = this.#timeout) {
 		this.#headerAuth = { Authorization: `Bearer ${accessToken}` };
-		// return await this._fetchUrl("https://www.udemy.com/api-2.0/users/me");
 		return await this.#fetchEndpoint("/contexts/me/?header=True");
 	}
 
+	async fetchAllUserCourses(isSubscriber = false, httpTimeout = this.#timeout) {
+		const cacheKey = `all_user_courses_${isSubscriber}`;
+		const cached = this.#cache.get(cacheKey);
+		if (cached) {
+			return cached;
+		}
+
+		let allCourses = [];
+		const fetchPages = async (baseUrl) => {
+			let url = `${baseUrl}?page_size=100&ordering=-last_accessed`;
+			let hasNext = true;
+			let pageCount = 0;
+			const maxPages = 10; // fetch up to 1000 courses
+
+			while (hasNext && pageCount < maxPages) {
+				pageCount++;
+				try {
+					const data = await this.#fetchUrl(url, "GET", httpTimeout);
+					if (data && Array.isArray(data.results)) {
+						allCourses.push(...data.results);
+					}
+					if (data && data.next) {
+						url = data.next;
+					} else {
+						hasNext = false;
+					}
+				} catch (e) {
+					console.warn(`[fetchAllUserCourses] Error fetching page ${pageCount}:`, e.message);
+					hasNext = false;
+				}
+			}
+		};
+
+		if (isSubscriber) {
+			await Promise.all([
+				fetchPages(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`),
+				fetchPages(`${this.#urlBase}/api-2.0${this.#URL_COURSES_ENROLL}`),
+			]);
+		} else {
+			await fetchPages(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`);
+		}
+
+		const uniqueMap = new Map();
+		for (const course of allCourses) {
+			if (course && course.id) {
+				uniqueMap.set(String(course.id), course);
+			}
+		}
+		const uniqueCourses = Array.from(uniqueMap.values());
+		this.#cache.set(cacheKey, uniqueCourses, 300); // 5 min TTL
+		return uniqueCourses;
+	}
+
+	_isCourseMatch(course, parsed) {
+		if (!course) return false;
+
+		const { raw, cleanText, isInstructor, instructorSlug, instructorPath } = parsed;
+		const cleanLower = (cleanText || "").toLowerCase().trim();
+		const rawLower = (raw || "").toLowerCase().trim();
+		const slugLower = (instructorSlug || "").toLowerCase().trim();
+		const baseSlug = slugLower.replace(/-\d+$/, "");
+		const baseClean = cleanLower.replace(/\s+\d+$/, "");
+
+		const courseTitle = (course.title || course.name || "").toLowerCase();
+		const courseUrl = (course.url || "").toLowerCase();
+
+		if (cleanLower && courseTitle.includes(cleanLower)) return true;
+		if (baseClean && courseTitle.includes(baseClean)) return true;
+		if (rawLower && courseTitle.includes(rawLower)) return true;
+		if (slugLower && courseTitle.includes(slugLower)) return true;
+
+		if (cleanLower && courseUrl.includes(cleanLower)) return true;
+		if (baseSlug && courseUrl.includes(baseSlug)) return true;
+
+		const instructors = course.visible_instructors || course.instructors || [];
+		for (const inst of instructors) {
+			const instTitle = (inst.title || inst.display_name || inst.name || "").toLowerCase();
+			const instUrl = (inst.url || "").toLowerCase();
+			const instJob = (inst.job_title || "").toLowerCase();
+
+			if (slugLower && instUrl.includes(slugLower)) return true;
+			if (baseSlug && instUrl.includes(baseSlug)) return true;
+			if (instructorPath && instUrl.includes(instructorPath.toLowerCase())) return true;
+
+			if (cleanLower && (instTitle.includes(cleanLower) || cleanLower.includes(instTitle))) return true;
+			if (baseClean && (instTitle.includes(baseClean) || baseClean.includes(instTitle))) return true;
+			if (rawLower && instTitle.includes(rawLower)) return true;
+
+			const nameWords = baseClean.split(/\s+/).filter((w) => w.length > 1);
+			if (nameWords.length > 1) {
+				const allWordsMatch = nameWords.every((word) => instTitle.includes(word) || instUrl.includes(word));
+				if (allWordsMatch) return true;
+			}
+		}
+
+		return false;
+	}
+
 	async fetchSearchCourses(keyword, pageSize, isSubscriber, httpTimeout = this.#timeout) {
-		if (!keyword) {
+		if (!keyword || !keyword.trim()) {
 			return await this.fetchCourses(pageSize, isSubscriber, httpTimeout);
 		}
 
 		pageSize = Math.max(pageSize, 10);
+		const parsed = utils.parseSearchKeyword(keyword);
+		const searchKeyword = parsed.cleanText || parsed.raw;
 
-		const param = `page=1&ordering=title&fields[user]=job_title&page_size=${pageSize}&search=${keyword}`;
-		// const url = !isSubscriber ? `${this.#URL_COURSES}?${param}` : `${this.#URL_COURSES_ENROLL}?${param}`;
-        const url = `${this.#URL_COURSES}?${param}`;
-        const urlEnroll = `${this.#URL_COURSES_ENROLL}?${param}`;
+		const param = `page=1&ordering=title&fields[user]=job_title&page_size=${pageSize}&search=${encodeURIComponent(searchKeyword)}`;
+		const url = `${this.#URL_COURSES}?${param}`;
+		const urlEnroll = `${this.#URL_COURSES_ENROLL}?${param}`;
 
-        if (isSubscriber) {
-            const [courses, enrolledCourses] = await Promise.all([
-                this.#fetchEndpoint(url, "GET", httpTimeout),
-                this.#fetchEndpoint(urlEnroll, "GET", httpTimeout)
-            ]);
+		let searchResults = [];
+		let next = null;
+		let previous = null;
+		let count = 0;
 
-            const next = [courses.next, enrolledCourses.next].filter((n) => n !== null);
-            const previous = [courses.previous, enrolledCourses.previous].filter((p) => p !== null);
+		try {
+			if (isSubscriber) {
+				const [courses, enrolledCourses] = await Promise.all([
+					this.#fetchEndpoint(url, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0 })),
+					this.#fetchEndpoint(urlEnroll, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0 })),
+				]);
+				searchResults = [...(courses.results || []), ...(enrolledCourses.results || [])];
+				count = (courses.count || 0) + (enrolledCourses.count || 0);
+				next = [courses.next, enrolledCourses.next].filter((n) => n !== null);
+				previous = [courses.previous, enrolledCourses.previous].filter((p) => p !== null);
+			} else {
+				const courses = await this.#fetchEndpoint(url, "GET", httpTimeout);
+				searchResults = courses.results || [];
+				count = courses.count || 0;
+				next = courses.next;
+				previous = courses.previous;
+			}
+		} catch (e) {
+			console.warn("[fetchSearchCourses] Title search query returned error:", e.message);
+		}
 
-            return {
-                count: courses.count + enrolledCourses.count,
-                next: next.length > 0 ? next : null,
-                previous: previous.length > 0 ? previous : null,
-                results: [...courses.results, ...enrolledCourses.results]
-            }
-        }
+		try {
+			const allUserCourses = await this.fetchAllUserCourses(isSubscriber, httpTimeout);
+			if (allUserCourses && allUserCourses.length > 0) {
+				const matchedCourses = allUserCourses.filter((course) => this._isCourseMatch(course, parsed));
 
-		return await this.#fetchEndpoint(url, "GET", httpTimeout);
+				const seenIds = new Set(searchResults.map((c) => String(c.id)));
+				for (const course of matchedCourses) {
+					if (!seenIds.has(String(course.id))) {
+						seenIds.add(String(course.id));
+						searchResults.push(course);
+					}
+				}
+				count = searchResults.length;
+			}
+		} catch (e) {
+			console.warn("[fetchSearchCourses] Fetching all user courses for instructor matching error:", e.message);
+		}
+
+		return {
+			count: count || searchResults.length,
+			next: Array.isArray(next) && next.length === 0 ? null : next,
+			previous: Array.isArray(previous) && previous.length === 0 ? null : previous,
+			results: searchResults,
+		};
 	}
 
 	async fetchCourses(pageSize = 30, isSubscriber = false, httpTimeout = this.#timeout) {

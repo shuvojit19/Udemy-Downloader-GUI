@@ -167,6 +167,59 @@ const utils = {
 		const closestKey = keys.reduce((prev, curr) => (Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev));
 		return { key: closestKey, value: obj[closestKey] };
 	},
+
+	/**
+	 * Parses a raw search keyword or URL to extract clean text, instructor slug/path, or course slug.
+	 *
+	 * @param {string} rawInput - The search string or URL entered by the user.
+	 * @returns {Object} An object containing parsed search parameters.
+	 */
+	parseSearchKeyword(rawInput) {
+		if (!rawInput || typeof rawInput !== "string") {
+			return { raw: "", cleanText: "", isInstructor: false, instructorSlug: "", instructorPath: "" };
+		}
+		const trimmed = rawInput.trim();
+		if (!trimmed) {
+			return { raw: "", cleanText: "", isInstructor: false, instructorSlug: "", instructorPath: "" };
+		}
+
+		let isInstructor = false;
+		let instructorSlug = "";
+		let instructorPath = "";
+		let cleanText = trimmed;
+
+		const instructorMatch =
+			trimmed.match(/(?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)?udemy\.com\/user\/([^\/\?#]+)/i) ||
+			trimmed.match(/^\/?user\/([^\/\?#]+)/i);
+		const courseMatch =
+			trimmed.match(/(?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)?udemy\.com\/course\/([^\/\?#]+)/i) ||
+			trimmed.match(/^\/?course\/([^\/\?#]+)/i);
+
+		if (instructorMatch && instructorMatch[1]) {
+			isInstructor = true;
+			instructorSlug = decodeURIComponent(instructorMatch[1]).toLowerCase();
+			instructorPath = `/user/${instructorSlug}`;
+			cleanText = instructorSlug.replace(/-/g, " ");
+		} else if (courseMatch && courseMatch[1]) {
+			cleanText = decodeURIComponent(courseMatch[1]).replace(/-/g, " ");
+		} else if (trimmed.includes("-") && !trimmed.includes(" ") && (trimmed.startsWith("user/") || !trimmed.includes("/"))) {
+			instructorSlug = trimmed.toLowerCase();
+			instructorPath = `/user/${instructorSlug}`;
+			isInstructor = true;
+			cleanText = trimmed.replace(/-/g, " ");
+		} else {
+			cleanText = trimmed;
+			instructorSlug = trimmed.toLowerCase().replace(/\s+/g, "-");
+		}
+
+		return {
+			raw: trimmed,
+			cleanText,
+			isInstructor,
+			instructorSlug,
+			instructorPath,
+		};
+	},
 };
 
 module.exports = utils;

@@ -523,6 +523,12 @@ function createCourseElement(courseCache, downloadSection = false) {
 
 	const tagDismiss = `<a class="ui basic dismiss-download">&nbsp;&nbsp;&nbsp;${translate("Dismiss")}</a>`;
 
+	const instructorsList = (courseCache.visible_instructors || courseCache.instructors || [])
+		.map((i) => i.title || i.display_name || i.name)
+		.filter(Boolean)
+		.join(", ");
+	const instructorSubtitle = instructorsList ? `<div class="extra instructor-name" style="color: #666; font-size: 0.9em; margin-top: 3px; margin-bottom: 5px;"><i class="user icon"></i> ${instructorsList}</div>` : "";
+
 	const $course = $(`
         <div class="ui course item" course-id="${courseCache.id}" course-url="${courseCache.url}" course-completed="${courseCache.completed}" style="padding-top: 35px !important; padding-bottom: 25px;">
             <input type="hidden" name="encryptedvideos" value="${courseCache.encryptedVideos}">
@@ -547,6 +553,7 @@ function createCourseElement(courseCache, downloadSection = false) {
 
             <div class="content">
                 <span class="coursename">${courseCache.name}</span>
+                ${instructorSubtitle}
                 <div class="ui tiny icon green download-success message" style="display: none;">
                     <i class="check icon"></i>
                     <div class="content">
