@@ -253,179 +253,36 @@ class UdemyService {
 
 
 
-	async fetchAllUserCourses(isSubscriber = false, httpTimeout = this.#timeout) {
-		const cacheKey = `all_user_courses_${isSubscriber}`;
-		const cached = this.#cache.get(cacheKey);
-		if (cached) {
-			return cached;
-		}
-
-		let allCourses = [];
-		const fetchPagesParallel = async (baseUrl) => {
-			try {
-				const firstPageUrl = `${baseUrl}?page_size=100&ordering=-last_accessed&page=1`;
-				const firstData = await this.#fetchUrl(firstPageUrl, "GET", httpTimeout);
-				if (firstData && Array.isArray(firstData.results)) {
-					allCourses.push(...firstData.results);
-				}
-
-				const totalCount = firstData?.count || 0;
-				const totalPages = Math.min(Math.ceil(totalCount / 100), 50);
-
-				if (totalPages > 1) {
-					const pagePromises = [];
-					for (let p = 2; p <= totalPages; p++) {
-						const pageUrl = `${baseUrl}?page_size=100&ordering=-last_accessed&page=${p}`;
-						pagePromises.push(
-							this.#fetchUrl(pageUrl, "GET", httpTimeout)
-								.then((res) => (res && Array.isArray(res.results) ? res.results : []))
-								.catch((e) => {
-									console.warn(`[fetchAllUserCourses] Error fetching page ${p}:`, e.message);
-									return [];
-								})
-						);
-					}
-					const remainingResults = await Promise.all(pagePromises);
-					for (const pageRes of remainingResults) {
-						allCourses.push(...pageRes);
-					}
-				}
-			} catch (e) {
-				console.warn(`[fetchAllUserCourses] Error fetching base URL ${baseUrl}:`, e.message);
-			}
-		};
-
-		await Promise.all([
-			fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`),
-			fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES_ENROLL}`),
-		]);
-
-		const uniqueMap = new Map();
-		for (const course of allCourses) {
-			if (course && course.id) {
-				uniqueMap.set(String(course.id), course);
-			}
-		}
-		const uniqueCourses = Array.from(uniqueMap.values());
-		this.#cache.set(cacheKey, uniqueCourses, 600); // 10 min TTL
-		return uniqueCourses;
-	}
-
-	_isCourseMatch(course, parsed) {
-		if (!course) return false;
-
-		const { raw, cleanText, isInstructor, instructorSlug, instructorPath } = parsed;
-
-		const titleStr = (course.title || course.name || "").toLowerCase();
-		const urlStr = (course.url || "").toLowerCase();
-		const instructors = (course.visible_instructors || course.instructors || []);
-		const instStr = instructors
-			.map((i) => (i.title || i.display_name || i.name || "") + " " + (i.url || ""))
-			.join(" ")
-			.toLowerCase();
-
-		const fullTarget = `${titleStr} ${urlStr} ${instStr}`;
-
-		const highlyStripped = (str) => (str || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-
-		const cleanAlpha = highlyStripped(cleanText);
-		const rawAlpha = highlyStripped(raw);
-		const slugAlpha = highlyStripped(instructorSlug);
-		const targetAlpha = highlyStripped(fullTarget);
-
-		// 1. Direct alphanumeric substring match
-		if (cleanAlpha && targetAlpha.includes(cleanAlpha)) return true;
-		if (rawAlpha && targetAlpha.includes(rawAlpha)) return true;
-		if (slugAlpha && targetAlpha.includes(slugAlpha)) return true;
-
-		// 2. Token-based word matching (ignores word order, commas, punctuation)
-		const queryText = (cleanText || raw || "").toLowerCase();
-		const tokens = queryText
-			.replace(/[^a-z0-9\s]/g, " ")
-			.split(/\s+/)
-			.filter((t) => t.length >= 2);
-
-		if (tokens.length > 0) {
-			const matchedCount = tokens.filter((token) => fullTarget.includes(token)).length;
-			const requiredCount = tokens.length <= 3 ? tokens.length : Math.ceil(tokens.length * 0.75);
-			if (matchedCount >= requiredCount) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
 	async fetchSearchCourses(keyword, pageSize, isSubscriber, httpTimeout = this.#timeout) {
-		if (!keyword || !keyword.trim()) {
+		if (!keyword) {
 			return await this.fetchCourses(pageSize, isSubscriber, httpTimeout);
 		}
 
 		pageSize = Math.max(pageSize, 10);
 
-		// Parse search keyword to handle URLs, slugs, and normal text
-		const parsed = utils.parseSearchKeyword(keyword);
-		const searchKeyword = parsed.cleanText || parsed.raw;
-
-		const param = `page=1&ordering=title&fields[user]=job_title&page_size=${pageSize}&search=${encodeURIComponent(searchKeyword)}`;
+		const param = `page=1&ordering=title&fields[user]=job_title&page_size=${pageSize}&search=${keyword}`;
+		// const url = !isSubscriber ? `${this.#URL_COURSES}?${param}` : `${this.#URL_COURSES_ENROLL}?${param}`;
 		const url = `${this.#URL_COURSES}?${param}`;
 		const urlEnroll = `${this.#URL_COURSES_ENROLL}?${param}`;
 
-		let searchResults = [];
-		let next = null;
-		let previous = null;
-		let count = 0;
+		if (isSubscriber) {
+			const [courses, enrolledCourses] = await Promise.all([
+				this.#fetchEndpoint(url, "GET", httpTimeout),
+				this.#fetchEndpoint(urlEnroll, "GET", httpTimeout),
+			]);
 
-		try {
-			if (isSubscriber) {
-				const [courses, enrolledCourses] = await Promise.all([
-					this.#fetchEndpoint(url, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null })),
-					this.#fetchEndpoint(urlEnroll, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null })),
-				]);
+			const next = [courses.next, enrolledCourses.next].filter((n) => n !== null);
+			const previous = [courses.previous, enrolledCourses.previous].filter((p) => p !== null);
 
-				const nextArr = [courses.next, enrolledCourses.next].filter((n) => n !== null);
-				const previousArr = [courses.previous, enrolledCourses.previous].filter((p) => p !== null);
-
-				searchResults = [...(courses.results || []), ...(enrolledCourses.results || [])];
-				count = (courses.count || 0) + (enrolledCourses.count || 0);
-				next = nextArr.length > 0 ? nextArr : null;
-				previous = previousArr.length > 0 ? previousArr : null;
-			} else {
-				const courses = await this.#fetchEndpoint(url, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null }));
-				searchResults = courses.results || [];
-				count = courses.count || 0;
-				next = courses.next;
-				previous = courses.previous;
-			}
-		} catch (e) {
-			console.warn("[fetchSearchCourses] Title search query returned error:", e.message);
+			return {
+				count: courses.count + enrolledCourses.count,
+				next: next.length > 0 ? next : null,
+				previous: previous.length > 0 ? previous : null,
+				results: [...courses.results, ...enrolledCourses.results],
+			};
 		}
 
-		try {
-			const allUserCourses = await this.fetchAllUserCourses(isSubscriber, httpTimeout);
-			if (allUserCourses && allUserCourses.length > 0) {
-				const matchedCourses = allUserCourses.filter((course) => this._isCourseMatch(course, parsed));
-
-				if (matchedCourses.length > 0) {
-					// Prioritize exact local matches at the top
-					const matchedIds = new Set(matchedCourses.map((c) => String(c.id)));
-					// Keep only relevant API results that also match the query tokens
-					const filteredApiResults = searchResults.filter((c) => !matchedIds.has(String(c.id)) && this._isCourseMatch(c, parsed));
-					
-					searchResults = [...matchedCourses, ...filteredApiResults];
-				}
-				count = searchResults.length;
-			}
-		} catch (e) {
-			console.warn("[fetchSearchCourses] Fetching all user courses error:", e.message);
-		}
-
-		return {
-			count: count || searchResults.length,
-			next: Array.isArray(next) && next.length === 0 ? null : next,
-			previous: Array.isArray(previous) && previous.length === 0 ? null : previous,
-			results: searchResults,
-		};
+		return await this.#fetchEndpoint(url, "GET", httpTimeout);
 	}
 
 	async fetchCourses(pageSize = 30, isSubscriber = false, httpTimeout = this.#timeout) {
