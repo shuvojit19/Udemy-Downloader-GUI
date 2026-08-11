@@ -295,14 +295,10 @@ class UdemyService {
 			}
 		};
 
-		if (isSubscriber) {
-			await Promise.all([
-				fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`),
-				fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES_ENROLL}`),
-			]);
-		} else {
-			await fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`);
-		}
+		await Promise.all([
+			fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`),
+			fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES_ENROLL}`),
+		]);
 
 		const uniqueMap = new Map();
 		for (const course of allCourses) {
