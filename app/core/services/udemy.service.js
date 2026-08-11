@@ -261,38 +261,47 @@ class UdemyService {
 		}
 
 		let allCourses = [];
-		const fetchPages = async (baseUrl) => {
-			let url = `${baseUrl}?page_size=100&ordering=-last_accessed`;
-			let hasNext = true;
-			let pageCount = 0;
-			const maxPages = 50; // fetch up to 5000 courses
-
-			while (hasNext && pageCount < maxPages) {
-				pageCount++;
-				try {
-					const data = await this.#fetchUrl(url, "GET", httpTimeout);
-					if (data && Array.isArray(data.results)) {
-						allCourses.push(...data.results);
-					}
-					if (data && data.next) {
-						url = data.next;
-					} else {
-						hasNext = false;
-					}
-				} catch (e) {
-					console.warn(`[fetchAllUserCourses] Error fetching page ${pageCount}:`, e.message);
-					hasNext = false;
+		const fetchPagesParallel = async (baseUrl) => {
+			try {
+				const firstPageUrl = `${baseUrl}?page_size=100&ordering=-last_accessed&page=1`;
+				const firstData = await this.#fetchUrl(firstPageUrl, "GET", httpTimeout);
+				if (firstData && Array.isArray(firstData.results)) {
+					allCourses.push(...firstData.results);
 				}
+
+				const totalCount = firstData?.count || 0;
+				const totalPages = Math.min(Math.ceil(totalCount / 100), 50);
+
+				if (totalPages > 1) {
+					const pagePromises = [];
+					for (let p = 2; p <= totalPages; p++) {
+						const pageUrl = `${baseUrl}?page_size=100&ordering=-last_accessed&page=${p}`;
+						pagePromises.push(
+							this.#fetchUrl(pageUrl, "GET", httpTimeout)
+								.then((res) => (res && Array.isArray(res.results) ? res.results : []))
+								.catch((e) => {
+									console.warn(`[fetchAllUserCourses] Error fetching page ${p}:`, e.message);
+									return [];
+								})
+						);
+					}
+					const remainingResults = await Promise.all(pagePromises);
+					for (const pageRes of remainingResults) {
+						allCourses.push(...pageRes);
+					}
+				}
+			} catch (e) {
+				console.warn(`[fetchAllUserCourses] Error fetching base URL ${baseUrl}:`, e.message);
 			}
 		};
 
 		if (isSubscriber) {
 			await Promise.all([
-				fetchPages(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`),
-				fetchPages(`${this.#urlBase}/api-2.0${this.#URL_COURSES_ENROLL}`),
+				fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`),
+				fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES_ENROLL}`),
 			]);
 		} else {
-			await fetchPages(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`);
+			await fetchPagesParallel(`${this.#urlBase}/api-2.0${this.#URL_COURSES}`);
 		}
 
 		const uniqueMap = new Map();
@@ -302,7 +311,7 @@ class UdemyService {
 			}
 		}
 		const uniqueCourses = Array.from(uniqueMap.values());
-		this.#cache.set(cacheKey, uniqueCourses, 300); // 5 min TTL
+		this.#cache.set(cacheKey, uniqueCourses, 600); // 10 min TTL
 		return uniqueCourses;
 	}
 
@@ -310,34 +319,42 @@ class UdemyService {
 		if (!course) return false;
 
 		const { raw, cleanText, isInstructor, instructorSlug, instructorPath } = parsed;
-		
-		// Create highly stripped strings (only a-z0-9) for bulletproof matching
+
+		const titleStr = (course.title || course.name || "").toLowerCase();
+		const urlStr = (course.url || "").toLowerCase();
+		const instructors = (course.visible_instructors || course.instructors || []);
+		const instStr = instructors
+			.map((i) => (i.title || i.display_name || i.name || "") + " " + (i.url || ""))
+			.join(" ")
+			.toLowerCase();
+
+		const fullTarget = `${titleStr} ${urlStr} ${instStr}`;
+
 		const highlyStripped = (str) => (str || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
 
 		const cleanAlpha = highlyStripped(cleanText);
 		const rawAlpha = highlyStripped(raw);
 		const slugAlpha = highlyStripped(instructorSlug);
+		const targetAlpha = highlyStripped(fullTarget);
 
-		const titleAlpha = highlyStripped(course.title || course.name);
-		const urlAlpha = highlyStripped(course.url);
+		// 1. Direct alphanumeric substring match
+		if (cleanAlpha && targetAlpha.includes(cleanAlpha)) return true;
+		if (rawAlpha && targetAlpha.includes(rawAlpha)) return true;
+		if (slugAlpha && targetAlpha.includes(slugAlpha)) return true;
 
-		if (cleanAlpha && titleAlpha.includes(cleanAlpha)) return true;
-		if (rawAlpha && titleAlpha.includes(rawAlpha)) return true;
-		if (slugAlpha && titleAlpha.includes(slugAlpha)) return true;
+		// 2. Token-based word matching (ignores word order, commas, punctuation)
+		const queryText = (cleanText || raw || "").toLowerCase();
+		const tokens = queryText
+			.replace(/[^a-z0-9\s]/g, " ")
+			.split(/\s+/)
+			.filter((t) => t.length >= 2);
 
-		if (cleanAlpha && urlAlpha.includes(cleanAlpha)) return true;
-		if (slugAlpha && urlAlpha.includes(slugAlpha)) return true;
-
-		const instructors = course.visible_instructors || course.instructors || [];
-		for (const inst of instructors) {
-			const instTitleAlpha = highlyStripped(inst.title || inst.display_name || inst.name);
-			const instUrlAlpha = highlyStripped(inst.url);
-
-			if (slugAlpha && instUrlAlpha.includes(slugAlpha)) return true;
-			if (slugAlpha && instUrlAlpha.includes(instructorPath ? highlyStripped(instructorPath) : "")) return true;
-
-			if (cleanAlpha && (instTitleAlpha.includes(cleanAlpha) || cleanAlpha.includes(instTitleAlpha))) return true;
-			if (rawAlpha && instTitleAlpha.includes(rawAlpha)) return true;
+		if (tokens.length > 0) {
+			const matchedCount = tokens.filter((token) => fullTarget.includes(token)).length;
+			const requiredCount = tokens.length <= 3 ? tokens.length : Math.ceil(tokens.length * 0.75);
+			if (matchedCount >= requiredCount) {
+				return true;
+			}
 		}
 
 		return false;
@@ -349,7 +366,7 @@ class UdemyService {
 		}
 
 		pageSize = Math.max(pageSize, 10);
-		
+
 		// Parse search keyword to handle URLs, slugs, and normal text
 		const parsed = utils.parseSearchKeyword(keyword);
 		const searchKeyword = parsed.cleanText || parsed.raw;
@@ -367,7 +384,7 @@ class UdemyService {
 			if (isSubscriber) {
 				const [courses, enrolledCourses] = await Promise.all([
 					this.#fetchEndpoint(url, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null })),
-					this.#fetchEndpoint(urlEnroll, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null }))
+					this.#fetchEndpoint(urlEnroll, "GET", httpTimeout).catch(() => ({ results: [], next: null, count: 0, previous: null })),
 				]);
 
 				const nextArr = [courses.next, enrolledCourses.next].filter((n) => n !== null);
@@ -393,17 +410,18 @@ class UdemyService {
 			if (allUserCourses && allUserCourses.length > 0) {
 				const matchedCourses = allUserCourses.filter((course) => this._isCourseMatch(course, parsed));
 
-				const seenIds = new Set(searchResults.map((c) => String(c.id)));
-				for (const course of matchedCourses) {
-					if (!seenIds.has(String(course.id))) {
-						seenIds.add(String(course.id));
-						searchResults.unshift(course);
-					}
+				if (matchedCourses.length > 0) {
+					// Prioritize exact local matches at the top
+					const matchedIds = new Set(matchedCourses.map((c) => String(c.id)));
+					// Keep only relevant API results that also match the query tokens
+					const filteredApiResults = searchResults.filter((c) => !matchedIds.has(String(c.id)) && this._isCourseMatch(c, parsed));
+					
+					searchResults = [...matchedCourses, ...filteredApiResults];
 				}
 				count = searchResults.length;
 			}
 		} catch (e) {
-			console.warn("[fetchSearchCourses] Fetching all user courses for instructor matching error:", e.message);
+			console.warn("[fetchSearchCourses] Fetching all user courses error:", e.message);
 		}
 
 		return {
