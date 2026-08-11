@@ -176,14 +176,15 @@ const utils = {
 	 */
 	parseSearchKeyword(rawInput) {
 		if (!rawInput || typeof rawInput !== "string") {
-			return { raw: "", cleanText: "", isInstructor: false, instructorSlug: "", instructorPath: "" };
+			return { raw: "", cleanText: "", isInstructor: false, isCourseUrl: false, instructorSlug: "", instructorPath: "" };
 		}
 		const trimmed = rawInput.trim();
 		if (!trimmed) {
-			return { raw: "", cleanText: "", isInstructor: false, instructorSlug: "", instructorPath: "" };
+			return { raw: "", cleanText: "", isInstructor: false, isCourseUrl: false, instructorSlug: "", instructorPath: "" };
 		}
 
 		let isInstructor = false;
+		let isCourseUrl = false;
 		let instructorSlug = "";
 		let instructorPath = "";
 		let cleanText = trimmed;
@@ -191,12 +192,20 @@ const utils = {
 		const instructorMatch =
 			trimmed.match(/(?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)?udemy\.com\/user\/([^\/\?#]+)/i) ||
 			trimmed.match(/^\/?user\/([^\/\?#]+)/i);
+		const courseMatch =
+			trimmed.match(/(?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)?udemy\.com\/course\/([^\/\?#]+)/i) ||
+			trimmed.match(/^\/?course\/([^\/\?#]+)/i);
 
 		if (instructorMatch && instructorMatch[1]) {
 			isInstructor = true;
 			instructorSlug = decodeURIComponent(instructorMatch[1]).toLowerCase();
 			instructorPath = `/user/${instructorSlug}`;
 			cleanText = instructorSlug.replace(/-/g, " ");
+		} else if (courseMatch && courseMatch[1]) {
+			isCourseUrl = true;
+			const decoded = decodeURIComponent(courseMatch[1]);
+			cleanText = decoded.replace(/-/g, " ");
+			instructorSlug = decoded.toLowerCase();
 		} else if (trimmed.includes("-") && !trimmed.includes(" ") && (trimmed.startsWith("user/") || !trimmed.includes("/"))) {
 			instructorSlug = trimmed.toLowerCase();
 			instructorPath = `/user/${instructorSlug}`;
@@ -211,6 +220,7 @@ const utils = {
 			raw: trimmed,
 			cleanText,
 			isInstructor,
+			isCourseUrl,
 			instructorSlug,
 			instructorPath,
 		};
