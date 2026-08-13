@@ -2037,6 +2037,9 @@ function startDownload($course, courseData, subTitle = "") {
 	const $downloads = $(".ui.downloads.section .ui.courses.items");
 	const $courses = $(".ui.courses.section .ui.courses.items");
 
+	// Update the original element in the DOM if it's already there
+	$course.find(".status-text-label").html(translate("Downloading..."));
+
 	if ($course.parents(".courses.section").length) {
 		const $downloadItem = $downloads.find("[course-id=" + $course.attr("course-id") + "]");
 		if ($downloadItem.length) {
@@ -2339,10 +2342,7 @@ function startDownload($course, courseData, subTitle = "") {
 							// console.log(`Download speed: ${speedAndUnit.value}${speedAndUnit.unit}`);
 							$progressIndividual.progress("set percent", stats.total.completed);
 
-							if (dl.status === -1 && dl.stats.total.size == 0 && fs.existsSync(dl.filePath)) {
-								dl.emit("end");
-								clearInterval(timerDownloader);
-							} else if (dl.status === -1) {
+							if (dl.status === -1) {
 								appendLog("Download error, retrying... ", { url: dl.url });
 								axios({
 									timeout: HTTP_TIMEOUT,

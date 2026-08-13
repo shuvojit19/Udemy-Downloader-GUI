@@ -330,11 +330,20 @@ class UdemyService {
 		let url = `/users/me/subscribed-courses/${courseId}/lectures/${lectureId}?fields[lecture]=id,title,asset${getAttachments ? ",supplementary_assets" : ""}`;
 		url += allAssets ? "&fields[asset]=@all" : this.#ASSETS_FIELDS;
 
-		const lectureData = await this.#fetchEndpoint(`${url}`, "GET", httpTimeout);
-		// console.log("fetchLecture", lectureData);
-		// await this._prepareStreamSource(lectureData);
-
-		return lectureData;
+		try {
+			const lectureData = await this.#fetchEndpoint(`${url}`, "GET", httpTimeout);
+			return lectureData;
+		} catch (error) {
+			let responseData = "";
+			if (error.response && error.response.data) {
+				try {
+					responseData = JSON.stringify(error.response.data);
+				} catch (e) {
+					responseData = String(error.response.data);
+				}
+			}
+			throw new Error(`fetchLecture failed for courseId=${courseId}, lectureId=${lectureId}\nURL: ${url}\nResponse: ${responseData}\nOriginal: ${error.message}`);
+		}
 	}
 
 	async fetchLectureAttachments(lectureId, httpTimeout = this.#timeout) {
