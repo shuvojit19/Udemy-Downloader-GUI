@@ -234,6 +234,19 @@ function loadSettings() {
 		.parent(".dropdown")
 		.find(".defaultSubtitle.text")
 		.html(defaultSubtitle || "");
+
+	const externalUrlFormat = Settings.download.externalUrlFormat || "html";
+	$settingsForm.find('input[name="externalUrlFormat"]').val(externalUrlFormat);
+	$settingsForm
+		.find('input[name="externalUrlFormat"]')
+		.parent(".dropdown")
+		.find(".default.text")
+		.html(
+			externalUrlFormat === "html" ? ".html (" + translate("Default") + ")" :
+			externalUrlFormat === "txt" ? ".txt" :
+			externalUrlFormat === "url" ? ".url" :
+			translate("Both") + " (.txt & .url)"
+		);
 }
 
 function saveSettings(formElement) {
@@ -255,6 +268,7 @@ function saveSettings(formElement) {
 	const skipSubtitles = findInput("skipsubtitles")[0].checked ?? def.skipSubtitles;
 	const seqZeroLeft = findInput("seq-zero-left")[0].checked ?? def.seqZeroLeft;
 	const autoRetry = findInput("autoretry")[0].checked ?? def.autoRetry;
+	const externalUrlFormat = findInput("externalUrlFormat").val() || def.externalUrlFormat || "html";
 	const language = findInput("language").val() ?? undefined;
 
 	Settings.download = {
@@ -271,6 +285,7 @@ function saveSettings(formElement) {
 		skipSubtitles,
 		seqZeroLeft,
 		autoRetry,
+		externalUrlFormat,
 		maxConcurrentDownloads,
 	};
 
@@ -1026,7 +1041,9 @@ async function fetchCourseContent(courseId, courseName, courseUrl) {
 		console.log(`fetchCourseContent (${courseId})`, response);
 
 		const downloadType = Number(Settings.download.type);
+		const downloadLectures = downloadType === Settings.DownloadType.Both || downloadType === Settings.DownloadType.OnlyLectures;
 		const downloadAttachments = downloadType === Settings.DownloadType.Both || downloadType === Settings.DownloadType.OnlyAttachments;
+		const downloadExternalURLs = downloadType === Settings.DownloadType.Both || downloadType === Settings.DownloadType.OnlyExternalURLs;
 
 		const courseData = {
 			id: courseId,
@@ -1049,13 +1066,16 @@ async function fetchCourseContent(courseId, courseName, courseUrl) {
 			} else if (type == "quiz" || type == "practice") {
 				const srcUrl = `${courseUrl}t/${item._class}/${item.id}`;
 
-				chapterData.lectures.push({
-					type: "url",
-					name: item.title,
-					src: `<script type="text/javascript">window.location = "${srcUrl}";</script>`,
-					quality: "Attachment",
-				});
-				courseData.totalLectures++;
+				if (downloadExternalURLs) {
+					chapterData.lectures.push({
+						type: "url",
+						name: item.title,
+						src: `<script type="text/javascript">window.location = "${srcUrl}";</script>`,
+						quality: "Attachment",
+						externalUrl: srcUrl,
+					});
+					courseData.totalLectures++;
+				}
 			} else {
 				const lecture = { type, name: item.title, src: "", quality: Settings.download.videoQuality, isEncrypted: false };
 				const { asset, supplementary_assets = [] } = item;
@@ -1142,16 +1162,21 @@ async function fetchCourseContent(courseId, courseName, courseUrl) {
 					});
 				}
 
-				if (downloadAttachments && supplementary_assets && supplementary_assets.length > 0) {
+				if ((downloadAttachments || downloadExternalURLs) && supplementary_assets && supplementary_assets.length > 0) {
 					const attachments = (lecture.attachments = []);
 
 					supplementary_assets.forEach((attachment) => {
-						const type = attachment.download_urls ? "file" : "url";
-						const src = attachment.download_urls && attachment.download_urls[attachment.asset_type]
+						const isFile = !!attachment.download_urls;
+						const type = isFile ? "file" : "url";
+						
+						if (isFile && !downloadAttachments) return;
+						if (!isFile && !downloadExternalURLs) return;
+
+						const src = isFile
 							? attachment.download_urls[attachment.asset_type][0].file
 							: `<script type="text/javascript">window.location = "${attachment.external_url}";</script>`;
 
-						attachments.push({ type, name: attachment.title, src, quality: "Attachment" });
+						attachments.push({ type, name: attachment.title, src, quality: "Attachment", externalUrl: attachment.external_url });
 					});
 				}
 
@@ -2409,20 +2434,45 @@ function startDownload($course, courseData, subTitle = "") {
 
 				if (["article", "url"].includes(attachment.type)) {
 					const wfDir = downloadDirectory + "/" + courseName + "/" + sanitizedChapterName;
-					fs.writeFile(
-						utils.getSequenceName(lectureIndex + 1, countLectures, attachmentName + ".html", `.${index + 1} `, wfDir).fullPath,
-						attachment.src || "",
-						function () {
-							index++;
-							if (index >= totalAttachments) {
-								$progressCombined.progress("increment");
-								downloaded++;
-								downloadLecture(chapterIndex, ++lectureIndex, countLectures, sanitizedChapterName);
-							} else {
-								downloadAttachments(index, totalAttachments);
-							}
+					const doneCb = function () {
+						index++;
+						if (index >= totalAttachments) {
+							$progressCombined.progress("increment");
+							downloaded++;
+							downloadLecture(chapterIndex, ++lectureIndex, countLectures, sanitizedChapterName);
+						} else {
+							downloadAttachments(index, totalAttachments);
 						}
-					);
+					};
+
+					if (attachment.externalUrl) {
+						const format = Settings.download.externalUrlFormat || "html";
+						const filesToWrite = format === "both" ? ["txt", "url"] : [format];
+						let pending = filesToWrite.length;
+						if (pending === 0) return doneCb();
+
+						filesToWrite.forEach(ext => {
+							const seqName = utils.getSequenceName(lectureIndex + 1, countLectures, sanitize(attachmentName) + "." + ext, `.${index + 1} `, wfDir).fullPath;
+							let content = "";
+							if (ext === "html") {
+								content = `<script type="text/javascript">window.location = "${attachment.externalUrl}";</script>`;
+							} else if (ext === "txt") {
+								content = attachment.externalUrl;
+							} else if (ext === "url") {
+								content = `[InternetShortcut]\nURL=${attachment.externalUrl}`;
+							}
+							fs.writeFile(seqName, content, () => {
+								pending--;
+								if (pending <= 0) doneCb();
+							});
+						});
+					} else {
+						fs.writeFile(
+							utils.getSequenceName(lectureIndex + 1, countLectures, attachmentName + ".html", `.${index + 1} `, wfDir).fullPath,
+							attachment.src || "",
+							doneCb
+						);
+					}
 				} else {
 					if (!attachment.src || typeof attachment.src !== "string" || !attachment.src.trim() || !attachment.src.startsWith("http")) {
 						appendLog("Skip Attachment - Invalid URL", `Attachment: ${attachmentName}`);
@@ -2674,22 +2724,47 @@ function startDownload($course, courseData, subTitle = "") {
 
 			if (lectureType == "article" || lectureType == "url") {
 				const wfDir = `${downloadDirectory}/${courseName}/${sanitizedChapterName}`;
-				fs.writeFile(
-					utils.getSequenceName(lectureIndex + 1, countLectures, sanitizedLectureName + ".html", ". ", wfDir).fullPath,
-					lectureData.src || "",
-					function () {
-						if (lectureData.attachments) {
-							lectureData.attachments.sort(utils.dynamicSort("name"));
-							const totalAttachments = lectureData.attachments.length;
-							let indexador = 0;
-							downloadAttachments(indexador, totalAttachments);
-						} else {
-							$progressCombined.progress("increment");
-							downloaded++;
-							downloadLecture(chapterIndex, ++lectureIndex, countLectures, sanitizedChapterName);
-						}
+				const doneCb = function () {
+					if (lectureData.attachments) {
+						lectureData.attachments.sort(utils.dynamicSort("name"));
+						const totalAttachments = lectureData.attachments.length;
+						let indexador = 0;
+						downloadAttachments(indexador, totalAttachments);
+					} else {
+						$progressCombined.progress("increment");
+						downloaded++;
+						downloadLecture(chapterIndex, ++lectureIndex, countLectures, sanitizedChapterName);
 					}
-				);
+				};
+
+				if (lectureData.externalUrl) {
+					const format = Settings.download.externalUrlFormat || "html";
+					const filesToWrite = format === "both" ? ["txt", "url"] : [format];
+					let pending = filesToWrite.length;
+					if (pending === 0) return doneCb();
+
+					filesToWrite.forEach(ext => {
+						const seqName = utils.getSequenceName(lectureIndex + 1, countLectures, sanitize(lectureName) + "." + ext, ". ", wfDir).fullPath;
+						let content = "";
+						if (ext === "html") {
+							content = `<script type="text/javascript">window.location = "${lectureData.externalUrl}";</script>`;
+						} else if (ext === "txt") {
+							content = lectureData.externalUrl;
+						} else if (ext === "url") {
+							content = `[InternetShortcut]\nURL=${lectureData.externalUrl}`;
+						}
+						fs.writeFile(seqName, content, () => {
+							pending--;
+							if (pending <= 0) doneCb();
+						});
+					});
+				} else {
+					fs.writeFile(
+						utils.getSequenceName(lectureIndex + 1, countLectures, sanitizedLectureName + ".html", ". ", wfDir).fullPath,
+						lectureData.src || "",
+						doneCb
+					);
+				}
 			} else {
 				const seqName = utils.getSequenceName(
 					lectureIndex + 1,
@@ -2699,7 +2774,7 @@ function startDownload($course, courseData, subTitle = "") {
 					`${downloadDirectory}/${courseName}/${sanitizedChapterName}`
 				);
 
-				const skipLecture = Settings.download.type == Settings.DownloadType.OnlyAttachments;
+				const skipLecture = Settings.download.type == Settings.DownloadType.OnlyAttachments || Settings.download.type == Settings.DownloadType.OnlyExternalURLs;
 				const isFileComplete = fs.existsSync(seqName.fullPath) && fs.statSync(seqName.fullPath).size > 0;
 
 				// Refresh stream URL just in time to avoid expired CDN links

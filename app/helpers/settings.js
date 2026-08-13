@@ -59,6 +59,7 @@ const Settings = (() => {
 		Both: 0,
 		OnlyLectures: 1,
 		OnlyAttachments: 2,
+		OnlyExternalURLs: 3,
 	});
 
 	/** @type {DownloadSetting} */
@@ -77,6 +78,7 @@ const Settings = (() => {
 		videoQuality: "Auto",
 		seqZeroLeft: false,
 		maxConcurrentDownloads: 4,
+		externalUrlFormat: "html",
 	});
 
 	let _language = null;

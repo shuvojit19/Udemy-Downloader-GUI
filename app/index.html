@@ -351,6 +351,29 @@
                           <label>${translate("Download only Attachments")}</label>
                         </div>
                       </div>
+                      <div class="field">
+                        <div class="ui slider checkbox">
+                          <input type="radio" name="downloadType" value="3">
+                          <label>${translate("Download only External URLs")}</label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="ui divider"></div>
+
+                    <div class="field">
+                      <label>${translate("External URL Format")}</label>
+                      <div class="ui fluid search selection dropdown">
+                        <input type="hidden" name="externalUrlFormat">
+                        <i class="dropdown icon"></i>
+                        <div class="default text"></div>
+                        <div class="menu">
+                          <div class="item" data-value="html">.html (${translate("Default")})</div>
+                          <div class="item" data-value="txt">.txt</div>
+                          <div class="item" data-value="url">.url</div>
+                          <div class="item" data-value="both">${translate("Both")} (.txt & .url)</div>
+                        </div>
+                      </div>
                     </div>
 
                     <div class="ui divider"></div>
