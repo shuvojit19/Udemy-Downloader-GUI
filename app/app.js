@@ -235,18 +235,19 @@ function loadSettings() {
 		.find(".defaultSubtitle.text")
 		.html(defaultSubtitle || "");
 
-	const externalUrlFormat = Settings.download.externalUrlFormat || "html";
+	const externalUrlFormat = Settings.download.externalUrlFormat || "txt";
 	$settingsForm.find('input[name="externalUrlFormat"]').val(externalUrlFormat);
 	$settingsForm
 		.find('input[name="externalUrlFormat"]')
 		.parent(".dropdown")
 		.find(".default.text")
 		.html(
-			externalUrlFormat === "html" ? ".html (" + translate("Default") + ")" :
-			externalUrlFormat === "txt" ? ".txt" :
+			externalUrlFormat === "txt" ? ".txt (" + translate("Default") + ")" :
 			externalUrlFormat === "url" ? ".url" :
 			translate("Both") + " (.txt & .url)"
 		);
+
+	$settingsForm.find('input[name="downloadExternalUrls"]').prop("checked", Boolean(Settings.download.downloadExternalUrls));
 }
 
 function saveSettings(formElement) {
@@ -268,7 +269,8 @@ function saveSettings(formElement) {
 	const skipSubtitles = findInput("skipsubtitles")[0].checked ?? def.skipSubtitles;
 	const seqZeroLeft = findInput("seq-zero-left")[0].checked ?? def.seqZeroLeft;
 	const autoRetry = findInput("autoretry")[0].checked ?? def.autoRetry;
-	const externalUrlFormat = findInput("externalUrlFormat").val() || def.externalUrlFormat || "html";
+	const downloadExternalUrls = findInput("downloadExternalUrls")[0].checked ?? def.downloadExternalUrls;
+	const externalUrlFormat = findInput("externalUrlFormat").val() || def.externalUrlFormat || "txt";
 	const language = findInput("language").val() ?? undefined;
 
 	Settings.download = {
@@ -285,6 +287,7 @@ function saveSettings(formElement) {
 		skipSubtitles,
 		seqZeroLeft,
 		autoRetry,
+		downloadExternalUrls,
 		externalUrlFormat,
 		maxConcurrentDownloads,
 	};
@@ -2446,8 +2449,16 @@ function startDownload($course, courseData, subTitle = "") {
 					};
 
 					if (attachment.externalUrl) {
-						const format = Settings.download.externalUrlFormat || "html";
-						const filesToWrite = format === "both" ? ["txt", "url"] : [format];
+						const filesToWrite = ["html"];
+						if (Settings.download.downloadExternalUrls) {
+							const format = Settings.download.externalUrlFormat || "txt";
+							if (format === "both") {
+								filesToWrite.push("txt", "url");
+							} else {
+								filesToWrite.push(format);
+							}
+						}
+
 						let pending = filesToWrite.length;
 						if (pending === 0) return doneCb();
 
@@ -2738,8 +2749,16 @@ function startDownload($course, courseData, subTitle = "") {
 				};
 
 				if (lectureData.externalUrl) {
-					const format = Settings.download.externalUrlFormat || "html";
-					const filesToWrite = format === "both" ? ["txt", "url"] : [format];
+					const filesToWrite = ["html"];
+					if (Settings.download.downloadExternalUrls) {
+						const format = Settings.download.externalUrlFormat || "txt";
+						if (format === "both") {
+							filesToWrite.push("txt", "url");
+						} else {
+							filesToWrite.push(format);
+						}
+					}
+
 					let pending = filesToWrite.length;
 					if (pending === 0) return doneCb();
 

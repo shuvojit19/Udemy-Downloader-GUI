@@ -78,7 +78,8 @@ const Settings = (() => {
 		videoQuality: "Auto",
 		seqZeroLeft: false,
 		maxConcurrentDownloads: 4,
-		externalUrlFormat: "html",
+		downloadExternalUrls: false,
+		externalUrlFormat: "txt",
 	});
 
 	let _language = null;

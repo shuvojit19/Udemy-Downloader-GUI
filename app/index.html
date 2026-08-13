@@ -362,14 +362,20 @@
                     <div class="ui divider"></div>
 
                     <div class="field">
+                      <div class="ui toggle checkbox">
+                        <input type="checkbox" name="downloadExternalUrls">
+                        <label>${translate("Download External URLs (Extra Formats)")}</label>
+                      </div>
+                    </div>
+
+                    <div class="field" style="margin-top: 10px; margin-left: 10px;">
                       <label>${translate("External URL Format")}</label>
                       <div class="ui fluid search selection dropdown">
                         <input type="hidden" name="externalUrlFormat">
                         <i class="dropdown icon"></i>
                         <div class="default text"></div>
                         <div class="menu">
-                          <div class="item" data-value="html">.html (${translate("Default")})</div>
-                          <div class="item" data-value="txt">.txt</div>
+                          <div class="item" data-value="txt">.txt (${translate("Default")})</div>
                           <div class="item" data-value="url">.url</div>
                           <div class="item" data-value="both">${translate("Both")} (.txt & .url)</div>
                         </div>
