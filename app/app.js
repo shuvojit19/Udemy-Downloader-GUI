@@ -1801,7 +1801,11 @@ async function _verifyCourseDownloads($course) {
 
 
 					const message = `[Seq #${seqNum}] Course Audit & Verification: ${courseName}\n- DRM Status: ${canDownloadEverything ? "DRM Free (100% Downloadable)" : `${drmEncryptedCount}/${totalLectures} DRM Encrypted`}\n- File Integrity: ${missingItems.length} missing file(s) out of ${totalItemsChecked}.\n\nWould you like to re-download missing files now?`;
-					appendLog(`Course Audit [Seq #${seqNum}]`, message);
+					
+					const missingFilesLogList = missingItems.map(item => `  - [${item.type.toUpperCase()}] ${item.path}`).join('\n');
+					const logMessage = `[Seq #${seqNum}] Course Audit & Verification: ${courseName}\n- DRM Status: ${canDownloadEverything ? "DRM Free (100% Downloadable)" : `${drmEncryptedCount}/${totalLectures} DRM Encrypted`}\n- File Integrity: ${missingItems.length} missing file(s) out of ${totalItemsChecked}.\nMissing Files:\n${missingFilesLogList}`;
+					
+					appendLog(`Course Audit [Seq #${seqNum}]`, logMessage);
 
 					dialogs.confirm(message, (ok) => {
 						if (ok) {
