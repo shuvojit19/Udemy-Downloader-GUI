@@ -2022,6 +2022,7 @@ function startDownload($course, courseData, subTitle = "") {
 
 	const subtitle = (Array.isArray(subTitle) ? subTitle[0] : subTitle).split("|");
 	$course.find(".info-downloaded").hide();
+	$course.find(".status-text-label").html(translate("Downloading..."));
 	$course.find('input[name="selectedSubtitle"]').val(subtitle);
 	$course.find('input[name="encryptedvideos"]').val(courseData.encryptedVideos);
 
@@ -2799,9 +2800,10 @@ function startDownload($course, courseData, subTitle = "") {
 
 				const skipLecture = Settings.download.type == Settings.DownloadType.OnlyAttachments || Settings.download.type == Settings.DownloadType.OnlyExternalURLs;
 				const isFileComplete = fs.existsSync(seqName.fullPath) && fs.statSync(seqName.fullPath).size > 0;
+				const isEncryptedLecture = lectureData.isEncrypted || (lectureData.src && String(lectureData.src).includes("encrypted-files"));
 
 				// Refresh stream URL just in time to avoid expired CDN links
-				if (!isFileComplete && !skipLecture && !lectureData.isEncrypted && (lectureType === "application/x-mpegurl" || (lectureType || "").includes("video"))) {
+				if (!isFileComplete && !skipLecture && !isEncryptedLecture && (lectureType === "application/x-mpegurl" || (lectureType || "").includes("video"))) {
 					try {
 						const courseId = $course.attr("course-id");
 						if (courseId && udemyService) {
@@ -2822,7 +2824,7 @@ function startDownload($course, courseData, subTitle = "") {
 				}
 
 				if (lectureType !== "application/x-mpegurl") {
-					if (isFileComplete || skipLecture || lectureData.isEncrypted || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
+					if (isFileComplete || skipLecture || isEncryptedLecture || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
 						if (!lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.startsWith("http")) {
 							appendLog("Skip Lecture - Invalid or missing URL", `Course: ${courseName}`, `Lecture: ${lectureName}`);
 						}
@@ -2842,7 +2844,7 @@ function startDownload($course, courseData, subTitle = "") {
 
 					dlStart(dl, (lectureType || "").includes("video"), endDownloadAttachment);
 				} else {
-					if (isFileComplete || skipLecture || lectureData.isEncrypted || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
+					if (isFileComplete || skipLecture || isEncryptedLecture || !lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.trim() || !lectureData.src.startsWith("http")) {
 						if (!lectureData.src || typeof lectureData.src !== "string" || !lectureData.src.startsWith("http")) {
 							appendLog("Skip Lecture - Invalid or missing m3u8 URL", `Course: ${courseName}`, `Lecture: ${lectureName}`);
 						}
