@@ -1080,7 +1080,7 @@ async function fetchCourseContent(courseId, courseName, courseUrl) {
 					courseData.totalLectures++;
 				}
 			} else {
-				const lecture = { type, name: item.title, src: "", quality: Settings.download.videoQuality, isEncrypted: false };
+				const lecture = { id: item.id, type, name: item.title, src: "", quality: Settings.download.videoQuality, isEncrypted: false };
 				const { asset, supplementary_assets = [] } = item;
 				const assetType = asset?.asset_type ? asset.asset_type.toLowerCase() : "";
 
