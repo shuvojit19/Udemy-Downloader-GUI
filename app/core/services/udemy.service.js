@@ -334,6 +334,17 @@ class UdemyService {
 			const lectureData = await this.#fetchEndpoint(`${url}`, "GET", httpTimeout);
 			return lectureData;
 		} catch (error) {
+			const status = error.response?.status;
+			if (status === 403) {
+				try {
+					let fallbackUrl = `/users/me/subscription-course-enrollments/${courseId}/lectures/${lectureId}?fields[lecture]=id,title,asset${getAttachments ? ",supplementary_assets" : ""}`;
+					fallbackUrl += allAssets ? "&fields[asset]=@all" : this.#ASSETS_FIELDS;
+					return await this.#fetchEndpoint(`${fallbackUrl}`, "GET", httpTimeout);
+				} catch (fallbackError) {
+					// Fallback failed, proceed to throw original error
+				}
+			}
+
 			let responseData = "";
 			if (error.response && error.response.data) {
 				try {
