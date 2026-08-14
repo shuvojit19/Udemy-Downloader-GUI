@@ -339,11 +339,23 @@ class UdemyService {
 				let fallbackUrl = `/users/me/subscription-course-enrollments/${courseId}/lectures/${lectureId}?fields[lecture]=id,title,asset${getAttachments ? ",supplementary_assets" : ""}`;
 				fallbackUrl += allAssets ? "&fields[asset]=@all" : this.#ASSETS_FIELDS;
 				try {
-					console.log(`[fetchLecture] ${status} on standard endpoint. Trying fallback for subscription: ${fallbackUrl}`);
+					console.log(`[fetchLecture] ${status} on standard endpoint. Trying fallback 1: ${fallbackUrl}`);
 					return await this.#fetchEndpoint(`${fallbackUrl}`, "GET", httpTimeout);
 				} catch (fallbackError) {
+					const fallbackStatus = fallbackError.response?.status;
+					if (fallbackStatus === 403 || fallbackStatus === 404) {
+						let fallbackUrl2 = `/courses/${courseId}/subscriber-curriculum-items/${lectureId}?fields[lecture]=id,title,asset${getAttachments ? ",supplementary_assets" : ""}`;
+						fallbackUrl2 += allAssets ? "&fields[asset]=@all" : this.#ASSETS_FIELDS;
+						try {
+							console.log(`[fetchLecture] ${fallbackStatus} on fallback 1. Trying fallback 2: ${fallbackUrl2}`);
+							return await this.#fetchEndpoint(`${fallbackUrl2}`, "GET", httpTimeout);
+						} catch (fallbackError2) {
+							let fallbackResp2 = fallbackError2.response?.data ? JSON.stringify(fallbackError2.response.data) : fallbackError2.message;
+							throw new Error(`fetchLecture failed for courseId=${courseId}, lectureId=${lectureId}\nPrimary URL: ${url} (${status})\nFallback 1 URL: ${fallbackUrl}\nFallback 2 URL: ${fallbackUrl2}\nFallback 2 Response: ${fallbackResp2}`);
+						}
+					}
 					let fallbackResp = fallbackError.response?.data ? JSON.stringify(fallbackError.response.data) : fallbackError.message;
-					throw new Error(`fetchLecture failed for courseId=${courseId}, lectureId=${lectureId}\nPrimary URL: ${url} (403 Forbidden)\nFallback URL: ${fallbackUrl}\nFallback Response: ${fallbackResp}`);
+					throw new Error(`fetchLecture failed for courseId=${courseId}, lectureId=${lectureId}\nPrimary URL: ${url} (${status})\nFallback URL: ${fallbackUrl}\nFallback Response: ${fallbackResp}`);
 				}
 			}
 
