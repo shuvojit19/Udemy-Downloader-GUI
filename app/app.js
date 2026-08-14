@@ -1861,8 +1861,16 @@ async function _downloadMissingFiles($course) {
 	ui.showProgress($course, true);
 
 	try {
-		$course.find(".status-text-label").html(translate("Fetching fresh download links..."));
-		const courseData = await fetchCourseContent(courseId, courseName, courseUrl);
+		let courseData = $course.data("courseData");
+		if (!courseData || !courseData.fetchedAt || (Date.now() - courseData.fetchedAt > 1800000)) {
+			$course.find(".status-text-label").html(translate("Fetching fresh download links..."));
+			const freshData = await fetchCourseContent(courseId, courseName, courseUrl);
+			if (freshData) {
+				freshData.fetchedAt = Date.now();
+				courseData = freshData;
+			}
+		}
+
 		if (!courseData) {
 			$course.find(".status-text-label").html(translate("Failed to fetch course details."));
 			ui.showProgress($course, false);
@@ -2006,11 +2014,6 @@ async function _downloadMissingFiles($course) {
 		$course.data("isQueued", false);
 		$course.data("isDownloading", true);
 		$course.data("isPreparing", false);
-
-		if (courseData) {
-			delete courseData.fetchedAt;
-		}
-
 
 		saveDownloads(false);
 

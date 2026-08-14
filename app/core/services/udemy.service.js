@@ -335,11 +335,11 @@ class UdemyService {
 			return lectureData;
 		} catch (error) {
 			const status = error.response?.status;
-			if (status === 403) {
+			if (status === 403 || status === 404) {
 				let fallbackUrl = `/users/me/subscription-course-enrollments/${courseId}/lectures/${lectureId}?fields[lecture]=id,title,asset${getAttachments ? ",supplementary_assets" : ""}`;
 				fallbackUrl += allAssets ? "&fields[asset]=@all" : this.#ASSETS_FIELDS;
 				try {
-					console.log(`[fetchLecture] 403 on standard endpoint. Trying fallback for subscription: ${fallbackUrl}`);
+					console.log(`[fetchLecture] ${status} on standard endpoint. Trying fallback for subscription: ${fallbackUrl}`);
 					return await this.#fetchEndpoint(`${fallbackUrl}`, "GET", httpTimeout);
 				} catch (fallbackError) {
 					let fallbackResp = fallbackError.response?.data ? JSON.stringify(fallbackError.response.data) : fallbackError.message;
