@@ -2838,7 +2838,7 @@ function startDownload($course, courseData, subTitle = "") {
 						appendLog("JIT URL Refresh Failed", `Lecture: ${lectureName}\nCourseID: ${courseId} LectureID: ${lectureData.id}\nError: ${err.message}`);
 						if (err.message.includes("404") || err.message.includes("403")) {
 							appendLog("Skip Lecture - API Access Denied/Not Found", `Course: ${courseName}`, `Lecture: ${lectureName}`);
-							endDownloadAttachment();
+							checkAttachment();
 							return;
 						}
 					}
