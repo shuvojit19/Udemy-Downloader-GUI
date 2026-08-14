@@ -1920,19 +1920,32 @@ async function _downloadMissingFiles($course) {
 						if (!att || !att.name) return;
 						totalItemsChecked++;
 						const attachmentName = (att.name || "attachment").trim();
-						let fileExtension = (att.src || "").split("/").pop().split("?").shift().split(".").pop() || "";
-						fileExtension = att.name.split(".").pop() === fileExtension ? "" : (fileExtension ? "." + fileExtension : "");
+						if (att.externalUrl || att.type === "url") {
+							const attSeqName = utils.getSequenceName(
+								lectureIndex + 1,
+								countLectures,
+								sanitize(attachmentName) + ".html",
+								`.${attIndex + 1} `,
+								`${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
+							);
+							if (!fs.existsSync(attSeqName.fullPath) || fs.statSync(attSeqName.fullPath).size === 0) {
+								missingItems.push({ name: attachmentName, type: "attachment", path: attSeqName.fullPath, isEncrypted: false, src: att.src });
+							}
+						} else {
+							let fileExtension = (att.src || "").split("/").pop().split("?").shift().split(".").pop() || "";
+							fileExtension = att.name.split(".").pop() === fileExtension ? "" : (fileExtension ? "." + fileExtension : "");
 
-						const attSeqName = utils.getSequenceName(
-							lectureIndex + 1,
-							countLectures,
-							sanitize(attachmentName) + fileExtension,
-							`.${attIndex + 1} `,
-							`${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
-						);
+							const attSeqName = utils.getSequenceName(
+								lectureIndex + 1,
+								countLectures,
+								sanitize(attachmentName) + fileExtension,
+								`.${attIndex + 1} `,
+								`${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
+							);
 
-						if (!fs.existsSync(attSeqName.fullPath) || fs.statSync(attSeqName.fullPath).size === 0) {
-							missingItems.push({ name: attachmentName, type: "attachment", path: attSeqName.fullPath, isEncrypted: false, src: att.src });
+							if (!fs.existsSync(attSeqName.fullPath) || fs.statSync(attSeqName.fullPath).size === 0) {
+								missingItems.push({ name: attachmentName, type: "attachment", path: attSeqName.fullPath, isEncrypted: false, src: att.src });
+							}
 						}
 					});
 				}
@@ -2819,7 +2832,12 @@ function startDownload($course, courseData, subTitle = "") {
 							}
 						}
 					} catch (err) {
-						appendLog("JIT URL Refresh Failed", `Lecture: ${lectureName}\nError: ${err.message}`);
+						appendLog("JIT URL Refresh Failed", `Lecture: ${lectureName}\nCourseID: ${courseId} LectureID: ${lectureData.id}\nError: ${err.message}`);
+						if (err.message.includes("404") || err.message.includes("403")) {
+							appendLog("Skip Lecture - API Access Denied/Not Found", `Course: ${courseName}`, `Lecture: ${lectureName}`);
+							endDownloadAttachment();
+							return;
+						}
 					}
 				}
 

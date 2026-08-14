@@ -97,19 +97,32 @@ class VerificationEngine {
                             if (!att || !att.name) return;
                             totalItemsChecked++;
                             const attachmentName = (att.name || "attachment").trim();
-                            let fileExtension = (att.src || "").split("/").pop().split("?").shift().split(".").pop() || "";
-                            fileExtension = att.name.split(".").pop() === fileExtension ? "" : (fileExtension ? "." + fileExtension : "");
+                            if (att.externalUrl || att.type === "url") {
+                                const attSeqName = utils.getSequenceName(
+                                    lectureIndex + 1,
+                                    countLectures,
+                                    sanitize(attachmentName) + ".html",
+                                    `.${attIndex + 1} `,
+                                    `${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
+                                );
+                                if (!fs.existsSync(attSeqName.fullPath) || fs.statSync(attSeqName.fullPath).size === 0) {
+                                    missingItems.push({ type: "attachment", path: attSeqName.fullPath });
+                                }
+                            } else {
+                                let fileExtension = (att.src || "").split("/").pop().split("?").shift().split(".").pop() || "";
+                                fileExtension = att.name.split(".").pop() === fileExtension ? "" : (fileExtension ? "." + fileExtension : "");
 
-                            const attSeqName = utils.getSequenceName(
-                                lectureIndex + 1,
-                                countLectures,
-                                sanitize(attachmentName) + fileExtension,
-                                `.${attIndex + 1} `,
-                                `${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
-                            );
+                                const attSeqName = utils.getSequenceName(
+                                    lectureIndex + 1,
+                                    countLectures,
+                                    sanitize(attachmentName) + fileExtension,
+                                    `.${attIndex + 1} `,
+                                    `${downloadDirectory}/${sanitizedCourseName}/${seqChapterName}`
+                                );
 
-                            if (!fs.existsSync(attSeqName.fullPath) || fs.statSync(attSeqName.fullPath).size === 0) {
-                                missingItems.push({ type: "attachment", path: attSeqName.fullPath });
+                                if (!fs.existsSync(attSeqName.fullPath) || fs.statSync(attSeqName.fullPath).size === 0) {
+                                    missingItems.push({ type: "attachment", path: attSeqName.fullPath });
+                                }
                             }
                         });
                     }
