@@ -2817,8 +2817,8 @@ function startDownload($course, courseData, subTitle = "") {
 
 				// Refresh stream URL just in time to avoid expired CDN links
 				if (!isFileComplete && !skipLecture && !isEncryptedLecture && (lectureType === "application/x-mpegurl" || (lectureType || "").includes("video"))) {
+					const courseId = $course.attr("course-id");
 					try {
-						const courseId = $course.attr("course-id");
 						if (courseId && udemyService) {
 							const freshLecture = await udemyService.fetchLecture(courseId, lectureData.id, true, true);
 							if (freshLecture) {
