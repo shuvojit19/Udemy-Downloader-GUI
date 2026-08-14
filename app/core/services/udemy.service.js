@@ -336,12 +336,14 @@ class UdemyService {
 		} catch (error) {
 			const status = error.response?.status;
 			if (status === 403) {
+				let fallbackUrl = `/users/me/subscription-course-enrollments/${courseId}/lectures/${lectureId}?fields[lecture]=id,title,asset${getAttachments ? ",supplementary_assets" : ""}`;
+				fallbackUrl += allAssets ? "&fields[asset]=@all" : this.#ASSETS_FIELDS;
 				try {
-					let fallbackUrl = `/users/me/subscription-course-enrollments/${courseId}/lectures/${lectureId}?fields[lecture]=id,title,asset${getAttachments ? ",supplementary_assets" : ""}`;
-					fallbackUrl += allAssets ? "&fields[asset]=@all" : this.#ASSETS_FIELDS;
+					console.log(`[fetchLecture] 403 on standard endpoint. Trying fallback for subscription: ${fallbackUrl}`);
 					return await this.#fetchEndpoint(`${fallbackUrl}`, "GET", httpTimeout);
 				} catch (fallbackError) {
-					// Fallback failed, proceed to throw original error
+					let fallbackResp = fallbackError.response?.data ? JSON.stringify(fallbackError.response.data) : fallbackError.message;
+					throw new Error(`fetchLecture failed for courseId=${courseId}, lectureId=${lectureId}\nPrimary URL: ${url} (403 Forbidden)\nFallback URL: ${fallbackUrl}\nFallback Response: ${fallbackResp}`);
 				}
 			}
 
